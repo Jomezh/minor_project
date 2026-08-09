@@ -78,9 +78,8 @@ try:
 except KeyboardInterrupt:
     print("\nStopping access-control system")
 
-finally:
+finally:  
     app.cleanup()
-    reader.cleanup()
     buzzer.cleanup()
+    reader.cleanup()
     database.close()
-    GPIO.cleanup()
