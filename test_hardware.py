@@ -13,11 +13,27 @@ relay = RelayController()
 buzzer = BuzzerController()
 door = MockDoorSensor(MOCK_DOOR_CYCLE_SECONDS)
 
+unlock_active = False
+door_has_opened = False
+
 
 def on_exit_pressed():
+    global unlock_active
+    global door_has_opened
+
+    if unlock_active:
+        print("Exit request ignored: unlock already active")
+        return
+
     print("Exit button pressed")
+    print("Unlocking relay")
+
     relay.unlock()
     buzzer.unlock_beep()
+
+    unlock_active = True
+    door_has_opened = False
+
     door.simulate_unlock_cycle()
 
 
@@ -30,21 +46,31 @@ try:
     print("Ctrl+C to stop.")
 
     while True:
-        if not door.is_closed():
-            print("Mock door: OPEN")
-        else:
-            if relay.is_energized():
-                print("Mock door: CLOSED; locking relay")
-                relay.lock()
-                buzzer.lock_beep()
+        closed = door.is_closed()
 
-        time.sleep(0.2)
+        if unlock_active and not closed:
+            if not door_has_opened:
+                print("Mock door: OPEN")
+                door_has_opened = True
+
+        if unlock_active and door_has_opened and closed:
+            print("Mock door: CLOSED")
+            print("Locking relay")
+
+            relay.lock()
+            buzzer.lock_beep()
+
+            unlock_active = False
+            door_has_opened = False
+
+        time.sleep(0.05)
 
 except KeyboardInterrupt:
     print("\nStopping hardware test")
 
 finally:
+    print("Forcing relay to locked state")
+    relay.lock()
     button.cleanup()
-    relay.cleanup()
     buzzer.cleanup()
     GPIO.cleanup()
