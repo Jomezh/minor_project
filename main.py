@@ -1,16 +1,14 @@
 import time
 
-import RPi.GPIO as GPIO
-
 from config import MOCK_DOOR_CYCLE_SECONDS
 from database.database import Database
 from core.access_policy import AccessPolicy
 from core.app_controller import AppController
-from hardware.rfid_bitbanged import RFIDBitBang
+from core.door_controller import DoorController
+from hardware.rfid_bitbang import RFIDBitBang
 from hardware.relay_controller import RelayController
 from hardware.buzzer_controller import BuzzerController
 from hardware.mock_door import MockDoorSensor
-from core.door_controller import DoorController
 
 
 database = Database()
@@ -35,9 +33,7 @@ app = AppController(
     buzzer=buzzer,
 )
 
-last_uid = None
-last_scan_time = 0.0
-SCAN_COOLDOWN_SECONDS = 2.0
+card_ready = True
 
 
 try:
@@ -52,34 +48,41 @@ try:
 
         uid = reader.read_uid()
 
-        if uid is not None:
+        if uid is None:
+            # The card has been removed.
+            # Re-arm the reader for the next scan.
+            card_ready = True
+
+        elif card_ready:
+            card_ready = False
+
             normalized_uid = database.normalize_uid(uid)
-            now = time.monotonic()
 
-            repeated_scan = (
-                normalized_uid == last_uid
-                and now - last_scan_time < SCAN_COOLDOWN_SECONDS
-            )
+            print(f"Card detected: {normalized_uid}")
 
-            if not repeated_scan:
-                print(f"Card detected: {normalized_uid}")
+            result = app.handle_rfid_uid(normalized_uid)
 
-                # Only needed while MockDoorSensor is enabled.
+            print(result)
+
+            # Only simulate the door opening after access is granted.
+            if result.get("allowed"):
                 door.simulate_unlock_cycle()
 
-                result = app.handle_rfid_uid(normalized_uid)
-                print(result)
-
-                last_uid = normalized_uid
-                last_scan_time = now
-
         time.sleep(0.05)
+
 
 except KeyboardInterrupt:
     print("\nStopping access-control system")
 
-finally:  
+
+finally:
+    # Ensure the relay is locked before releasing GPIO.
     app.cleanup()
+
+    # Buzzer must be cleaned before reader.cleanup()
+    # because reader.cleanup() releases all GPIO resources.
     buzzer.cleanup()
     reader.cleanup()
     database.close()
+
+    print("System safely stopped")
