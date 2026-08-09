@@ -1,4 +1,4 @@
-from hardware.rfid_bitbang import RFIDBitBang
+from hardware.rfid_bitbanged import RFIDBitBang
 
 
 reader = RFIDBitBang()
