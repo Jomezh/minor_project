@@ -10,7 +10,7 @@ try:
 
     print(f"MFRC522 version register: 0x{version:02X}")
 
-    if version in (0x88, 0x90, 0x91, 0x92):
+    if version in (0x88, 0x90, 0x91, 0x92, 0x82):
         print("RFID reader communication OK")
     else:
         print("Unexpected version; check wiring and reader power")
