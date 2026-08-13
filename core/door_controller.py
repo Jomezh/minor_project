@@ -69,10 +69,7 @@ class DoorController:
 
     def exit_admin_override(self):
         self.admin_override = False
-
-        if not self.unlock_active:
-            self.relay.lock()
-
+        self.lock(reason="admin_session_ended")
     def admin_set_state(self, unlocked, actor_uid=None):
         if unlocked:
             self.relay.unlock()

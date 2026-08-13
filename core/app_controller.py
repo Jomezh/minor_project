@@ -23,21 +23,25 @@ class AppController:
         if self.access_policy.is_admin(uid):
             self.mode = "admin_menu"
             self.admin_uid = uid
+
+            # Admin cards unlock the door immediately, then hold it
+            # under manual control instead of auto-relocking.
+            self.door_controller.unlock(reason="admin_access", actor_uid=uid)
             self.door_controller.enter_admin_override()
 
             self.database.add_log(
                 uid=uid,
                 event_type="admin_session",
                 result="opened",
-                reason="Admin card scanned",
+                reason="Admin card scanned, door unlocked",
                 actor_uid=uid,
-                door_state="locked",
+                door_state="unlocked",
             )
 
             return {
-                "allowed": False,
+                "allowed": True,
                 "result": "admin_mode",
-                "reason": "Admin mode entered. Door will not auto-unlock.",
+                "reason": "Admin mode entered, door unlocked",
                 "uid": uid,
             }
 
@@ -75,7 +79,7 @@ class AppController:
                 uid=uid,
                 event_type="admin_session",
                 result="closed",
-                reason="Admin re-scanned own card",
+                reason="Admin re-scanned own card, door relocked",
                 actor_uid=self.admin_uid,
                 door_state="locked",
             )
@@ -85,13 +89,15 @@ class AppController:
             return {
                 "allowed": False,
                 "result": "admin_mode_exited",
-                "reason": "Exited admin mode",
+                "reason": "Exited admin mode, door locked",
                 "uid": uid,
             }
 
         existing = self.database.get_card(uid)
 
         if existing:
+            self.buzzer.deniedbeep()
+
             return {
                 "allowed": False,
                 "result": "admin_card_lookup",
@@ -102,8 +108,6 @@ class AppController:
         return self._enroll_card(uid)
 
     def _enroll_card(self, uid):
-        # Console prompts are a placeholder until the Kivy enrollment
-        # screen replaces this with on-screen text entry.
         print(f"\nUnknown card {uid} scanned while in admin mode.")
 
         label = input("Enter cardholder name: ").strip() or "Unnamed"
@@ -128,6 +132,8 @@ class AppController:
             card_id=card_id,
             door_state="locked",
         )
+
+        self.buzzer.unlockbeep()
 
         return {
             "allowed": False,
