@@ -10,6 +10,7 @@ class AppController:
 
         self.mode = "normal"
         self.admin_uid = None
+        self.pending_enrollment_uid = None
 
     def update(self):
         self.door_controller.update()
@@ -24,8 +25,6 @@ class AppController:
             self.mode = "admin_menu"
             self.admin_uid = uid
 
-            # Admin cards unlock the door immediately, then hold it
-            # under manual control instead of auto-relocking.
             self.door_controller.unlock(reason="admin_access", actor_uid=uid)
             self.door_controller.enter_admin_override()
 
@@ -61,7 +60,7 @@ class AppController:
             self.door_controller.unlock(reason="access_granted", actor_uid=uid)
             self.database.increment_use_count(decision.card["id"])
         else:
-            self.buzzer.denied_beep()
+            self.buzzer.deniedbeep()
 
         return {
             "allowed": decision.allowed,
@@ -71,8 +70,20 @@ class AppController:
         }
 
     def _handle_admin_scan(self, uid):
+        # A card enrollment is already waiting on UI input for this UID.
+        # Ignore repeat scans of the same unenrolled card until the
+        # pending form is submitted or cancelled.
+        if self.pending_enrollment_uid == uid:
+            return {
+                "allowed": False,
+                "result": "enrollment_pending",
+                "reason": "Waiting for enrollment details to be submitted",
+                "uid": uid,
+            }
+
         if uid == self.admin_uid:
             self.mode = "normal"
+            self.pending_enrollment_uid = None
             self.door_controller.exit_admin_override()
 
             self.database.add_log(
@@ -105,16 +116,32 @@ class AppController:
                 "uid": uid,
             }
 
-        return self._enroll_card(uid)
+        return self.start_enrollment(uid)
 
-    def _enroll_card(self, uid):
-        print(f"\nUnknown card {uid} scanned while in admin mode.")
+    def start_enrollment(self, uid):
+        # Non-blocking: hands the UID to the UI, which is expected to
+        # show a form and call submit_enrollment() or cancel_enrollment().
+        self.pending_enrollment_uid = uid
 
-        label = input("Enter cardholder name: ").strip() or "Unnamed"
-        tier_input = input("Enter tier (guest/employee/admin): ").strip().lower()
+        return {
+            "allowed": False,
+            "result": "enrollment_started",
+            "reason": f"Unknown card {uid} scanned, awaiting enrollment details",
+            "uid": uid,
+        }
+
+    def submit_enrollment(self, uid, label, tier_value):
+        if self.pending_enrollment_uid != uid:
+            return {
+                "allowed": False,
+                "result": "enrollment_error",
+                "reason": "No pending enrollment for this UID",
+                "uid": uid,
+            }
 
         tier_map = {tier.value: tier for tier in Tier}
-        tier = tier_map.get(tier_input, Tier.GUEST)
+        tier = tier_map.get(tier_value.lower(), Tier.GUEST)
+        label = label.strip() or "Unnamed"
 
         card_id = self.database.create_card(
             uid=uid,
@@ -133,6 +160,7 @@ class AppController:
             door_state="locked",
         )
 
+        self.pending_enrollment_uid = None
         self.buzzer.unlockbeep()
 
         return {
@@ -141,6 +169,9 @@ class AppController:
             "reason": f"{label} enrolled as {tier.value}",
             "uid": uid,
         }
+
+    def cancel_enrollment(self):
+        self.pending_enrollment_uid = None
 
     def admin_manual_unlock(self):
         if self.mode == "admin_menu":
