@@ -61,7 +61,7 @@ class AppController:
             self.door_controller.unlock(reason="access_granted", actor_uid=uid)
             self.database.increment_use_count(decision.card["id"])
         else:
-            self.buzzer.deniedbeep()
+            self.buzzer.denied_beep()
 
         return {
             "allowed": decision.allowed,

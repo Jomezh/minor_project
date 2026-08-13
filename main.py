@@ -5,7 +5,7 @@ from database.database import Database
 from core.access_policy import AccessPolicy
 from core.app_controller import AppController
 from core.door_controller import DoorController
-from hardware.rfid_bitbanged import RFIDBitBang
+from hardware.rfid_bitbang import RFIDBitBang
 from hardware.relay_controller import RelayController
 from hardware.buzzer_controller import BuzzerController
 from hardware.mock_door import MockDoorSensor
@@ -34,6 +34,8 @@ app = AppController(
 )
 
 card_ready = True
+consecutive_misses = 0
+MISS_THRESHOLD = 6  # ~300ms of no read before the card is treated as removed
 
 
 try:
@@ -49,24 +51,26 @@ try:
         uid = reader.read_uid()
 
         if uid is None:
-            # The card has been removed.
-            # Re-arm the reader for the next scan.
-            card_ready = True
+            consecutive_misses += 1
 
-        elif card_ready:
-            card_ready = False
+            if consecutive_misses >= MISS_THRESHOLD:
+                # Card has been removed for long enough to be confident
+                # it's actually gone, not just a noisy read dropout.
+                card_ready = True
 
-            normalized_uid = database.normalize_uid(uid)
+        else:
+            consecutive_misses = 0
 
-            print(f"Card detected: {normalized_uid}")
+            if card_ready:
+                card_ready = False
 
-            result = app.handle_rfid_uid(normalized_uid)
+                normalized_uid = database.normalize_uid(uid)
 
-            print(result)
+                print(f"Card detected: {normalized_uid}")
 
-            # Only simulate the door opening after access is granted.
-           # if result.get("allowed"):
-            #    door.simulate_unlock_cycle()
+                result = app.handle_rfid_uid(normalized_uid)
+
+                print(result)
 
         time.sleep(0.05)
 
@@ -79,8 +83,8 @@ finally:
     # Ensure the relay is locked before releasing GPIO.
     app.cleanup()
 
-    # Buzzer must be cleaned before reader.cleanup()
-    # because reader.cleanup() releases all GPIO resources.
+    # Buzzer must be cleaned up before reader.cleanup(),
+    # since reader.cleanup() releases all GPIO resources.
     buzzer.cleanup()
     reader.cleanup()
     database.close()
