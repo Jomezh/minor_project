@@ -1,5 +1,4 @@
 import time
-from enum import Enum
 
 from config import (
     DOOR_OPEN_TIMEOUT_SECONDS,
@@ -8,127 +7,126 @@ from config import (
 )
 
 
-class DoorState(str, Enum):
-    LOCKED = "locked"
-    WAITING_FOR_OPEN = "waiting_for_open"
-    OPEN = "open"
-    ALARM = "alarm"
-
-
 class DoorController:
-    def __init__(self, relay, buzzer, door_sensor, database=None):
+    def __init__(self, relay, buzzer, door_sensor, database):
         self.relay = relay
         self.buzzer = buzzer
         self.door_sensor = door_sensor
         self.database = database
 
-        self.state = DoorState.LOCKED
-        self.reason = None
-        self.uid = None
+        self.unlock_active = False
+        self.door_has_opened = False
+        self.admin_override = False
+        self.unlock_started_at = None
+        self.last_alarm_at = None
 
-        self.state_started = time.monotonic()
-        self.last_alarm = 0.0
-
-        self.relay.lock()
-
-    def _log(self, event_type, result, reason):
-        if self.database is None:
+    def unlock(self, reason="access_granted", actor_uid=None):
+        if self.unlock_active:
             return
 
-        self.database.add_log(
-            uid=self.uid,
-            event_type=event_type,
-            result=result,
-            reason=reason,
-            door_state=self.state.value,
-        )
-
-    def request_unlock(self, reason="normal_access", uid=None):
-        if self.state != DoorState.LOCKED:
-            return False
-
-        self.reason = reason
-        self.uid = uid
-
         self.relay.unlock()
-        self.buzzer.unlock_beep()
+        self.buzzer.unlockbeep()
 
-        self.state = DoorState.WAITING_FOR_OPEN
-        self.state_started = time.monotonic()
+        self.unlock_active = True
+        self.door_has_opened = False
+        self.unlock_started_at = time.time()
 
-        self._log(
-            event_type="unlock_requested",
-            result="granted",
+        self.door_sensor.simulate_unlock_cycle()
+
+        self.database.add_log(
+            uid=actor_uid,
+            event_type="door",
+            result="unlocked",
             reason=reason,
+            actor_uid=actor_uid,
+            door_state="unlocked",
         )
 
-        return True
+    def lock(self, reason="auto_relock", actor_uid=None):
+        if not self.unlock_active and not self.relay.is_energized():
+            return
 
-    def update(self):
-        now = time.monotonic()
-        elapsed = now - self.state_started
-        door_closed = self.door_sensor.is_closed()
-
-        if self.state == DoorState.WAITING_FOR_OPEN:
-            if not door_closed:
-                self.state = DoorState.OPEN
-                self.state_started = now
-
-                self._log(
-                    event_type="door_open",
-                    result="open",
-                    reason=self.reason,
-                )
-
-            elif elapsed >= DOOR_OPEN_TIMEOUT_SECONDS:
-                self._relock("Door did not open before timeout")
-
-        elif self.state == DoorState.OPEN:
-            if door_closed:
-                self._relock("Door closed")
-
-            elif elapsed >= DOOR_CLOSE_TIMEOUT_SECONDS:
-                self.state = DoorState.ALARM
-                self.state_started = now
-                self.last_alarm = 0.0
-
-                self._log(
-                    event_type="door_alarm",
-                    result="alarm",
-                    reason="Door remained open too long",
-                )
-
-        elif self.state == DoorState.ALARM:
-            if door_closed:
-                self._relock("Door closed after alarm")
-
-            elif now - self.last_alarm >= ALARM_REPEAT_SECONDS:
-                self.buzzer.alarm_beep()
-                self.last_alarm = now
-
-    def _relock(self, reason):
         self.relay.lock()
-        self.buzzer.lock_beep()
+        self.buzzer.lockbeep()
 
-        self.state = DoorState.LOCKED
-        self.state_started = time.monotonic()
+        self.unlock_active = False
+        self.door_has_opened = False
+        self.unlock_started_at = None
 
-        self._log(
-            event_type="door_relocked",
+        self.database.add_log(
+            uid=actor_uid,
+            event_type="door",
             result="locked",
             reason=reason,
+            actor_uid=actor_uid,
+            door_state="locked",
         )
 
-        self.reason = None
-        self.uid = None
+    def enter_admin_override(self):
+        # Admin mode suspends the auto-unlock/auto-relock timers so
+        # the door can be controlled manually from the admin menu.
+        self.admin_override = True
 
-    def force_lock(self):
-        if not self.door_sensor.is_closed():
-            return False
+    def exit_admin_override(self):
+        self.admin_override = False
 
-        self._relock("Manual lock")
-        return True
+        if not self.unlock_active:
+            self.relay.lock()
+
+    def admin_set_state(self, unlocked, actor_uid=None):
+        if unlocked:
+            self.relay.unlock()
+            self.buzzer.unlockbeep()
+            result = "unlocked"
+        else:
+            self.relay.lock()
+            self.buzzer.lockbeep()
+            result = "locked"
+
+        self.database.add_log(
+            uid=actor_uid,
+            event_type="admin_override",
+            result=result,
+            reason="Manual admin control",
+            actor_uid=actor_uid,
+            door_state=result,
+        )
+
+    def update(self):
+        if self.admin_override:
+            return
+
+        if not self.unlock_active:
+            return
+
+        closed = self.door_sensor.is_closed()
+        elapsed = time.time() - self.unlock_started_at
+
+        if not closed and not self.door_has_opened:
+            self.door_has_opened = True
+
+        if self.door_has_opened and closed:
+            self.lock(reason="door_closed")
+            return
+
+        if not self.door_has_opened and elapsed > DOOR_OPEN_TIMEOUT_SECONDS:
+            self.lock(reason="open_timeout")
+            return
+
+        if self.door_has_opened and not closed and elapsed > DOOR_CLOSE_TIMEOUT_SECONDS:
+            now = time.time()
+
+            if self.last_alarm_at is None or now - self.last_alarm_at > ALARM_REPEAT_SECONDS:
+                self.buzzer.alarmbeep()
+                self.last_alarm_at = now
+
+                self.database.add_log(
+                    uid=None,
+                    event_type="alarm",
+                    result="door_held_open",
+                    reason="Door held open past timeout",
+                    door_state="open",
+                )
 
     def cleanup(self):
         self.relay.lock()
-        self.state = DoorState.LOCKED
