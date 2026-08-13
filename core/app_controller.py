@@ -161,7 +161,7 @@ class AppController:
         )
 
         self.pending_enrollment_uid = None
-        self.buzzer.unlockbeep()
+        self.buzzer.unlock_beep()
 
         return {
             "allowed": False,
