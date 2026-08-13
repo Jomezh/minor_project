@@ -65,8 +65,8 @@ try:
             print(result)
 
             # Only simulate the door opening after access is granted.
-            if result.get("allowed"):
-                door.simulate_unlock_cycle()
+           # if result.get("allowed"):
+            #    door.simulate_unlock_cycle()
 
         time.sleep(0.05)
 
