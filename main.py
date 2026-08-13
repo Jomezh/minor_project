@@ -35,7 +35,40 @@ app = AppController(
 
 card_ready = True
 consecutive_misses = 0
-MISS_THRESHOLD = 6  # ~300ms of no read before the card is treated as removed
+MISS_THRESHOLD = 6
+
+
+def handle_console_enrollment(result):
+    if result.get("result") != "enrollment_started":
+        return
+
+    uid = result["uid"]
+
+    print()
+    print(f"Enrollment started for card: {uid}")
+
+    label = input("Enter cardholder name: ").strip()
+
+    if not label:
+        print("Enrollment cancelled: name cannot be empty")
+        app.cancel_enrollment()
+        return
+
+    tier = input(
+        "Enter tier (guest/employee/admin): "
+    ).strip().lower()
+
+    if tier not in ("guest", "employee", "admin"):
+        print("Invalid tier. Using guest.")
+        tier = "guest"
+
+    enrollment_result = app.submit_enrollment(
+        uid=uid,
+        label=label,
+        tier_value=tier,
+    )
+
+    print(enrollment_result)
 
 
 try:
@@ -54,8 +87,6 @@ try:
             consecutive_misses += 1
 
             if consecutive_misses >= MISS_THRESHOLD:
-                # Card has been removed for long enough to be confident
-                # it's actually gone, not just a noisy read dropout.
                 card_ready = True
 
         else:
@@ -72,6 +103,10 @@ try:
 
                 print(result)
 
+                # Temporary console enrollment bridge.
+                # The future Kivy UI will replace this function.
+                handle_console_enrollment(result)
+
         time.sleep(0.05)
 
 
@@ -80,11 +115,7 @@ except KeyboardInterrupt:
 
 
 finally:
-    # Ensure the relay is locked before releasing GPIO.
     app.cleanup()
-
-    # Buzzer must be cleaned up before reader.cleanup(),
-    # since reader.cleanup() releases all GPIO resources.
     buzzer.cleanup()
     reader.cleanup()
     database.close()
