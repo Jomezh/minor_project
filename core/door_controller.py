@@ -47,7 +47,7 @@ class DoorController:
             return
 
         self.relay.lock()
-        self.buzzer.lockbeep()
+        self.buzzer.lock_beep()
 
         self.unlock_active = False
         self.door_has_opened = False
