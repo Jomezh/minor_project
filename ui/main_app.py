@@ -1,4 +1,10 @@
 import os
+import sys
+
+# Add project root to path so imports like 'config' work from ui/ subdir.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 # Force SDL2 window provider and small fixed window for the ILI9341.
 os.environ["KIVY_WINDOW"] = "sdl2"
