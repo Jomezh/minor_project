@@ -241,10 +241,7 @@ ScreenManager:
                 font_size: "16sp"
                 background_normal: ""
                 background_color: 0.10, 0.55, 0.25, 1
-                on_release: app.on_submit_enrollment(
-                    name_input.text,
-                    tier_spinner.text
-                )
+                on_release: app.on_submit_enrollment(name_input.text,tier_spinner.text )
 
             Button:
                 text: "CANCEL"
