@@ -36,7 +36,7 @@ class AccessPolicy:
             return AccessDecision(
                 False,
                 AccessResult.DISABLED_CARD,
-                "Card is disabled",
+                f"{card['label']}'s card is disabled",
                 card,
             )
 
@@ -48,7 +48,7 @@ class AccessPolicy:
                 return AccessDecision(
                     False,
                     AccessResult.EXPIRED_CARD,
-                    "Card is not valid yet",
+                    f"{card['label']}'s card is not valid yet",
                     card,
                 )
 
@@ -58,7 +58,7 @@ class AccessPolicy:
                 return AccessDecision(
                     False,
                     AccessResult.EXPIRED_CARD,
-                    "Card has expired",
+                    f"{card['label']}'s card has expired",
                     card,
                 )
 
@@ -67,7 +67,7 @@ class AccessPolicy:
                 return AccessDecision(
                     False,
                     AccessResult.EXPIRED_CARD,
-                    "Card use limit reached",
+                    f"{card['label']}'s card use limit reached",
                     card,
                 )
 
@@ -75,7 +75,7 @@ class AccessPolicy:
             return AccessDecision(
                 False,
                 AccessResult.OUTSIDE_SCHEDULE,
-                "Outside permitted access time",
+                f"{card['label']} is outside permitted access time",
                 card,
             )
 
@@ -83,14 +83,14 @@ class AccessPolicy:
             return AccessDecision(
                 False,
                 AccessResult.DENIED,
-                "Card is not authorized for this room",
+                f"{card['label']} is not authorized for this room",
                 card,
             )
 
         return AccessDecision(
             True,
             AccessResult.GRANTED,
-            "Access granted",
+            f"Access granted to {card['label']} ({card['tier']})",
             card,
         )
 
@@ -109,9 +109,9 @@ class AccessPolicy:
             SELECT schedules.*
             FROM schedules
             JOIN card_schedules
-              ON card_schedules.schedule_id = schedules.id
+                ON card_schedules.schedule_id = schedules.id
             WHERE card_schedules.card_id = ?
-              AND schedules.enabled = 1
+            AND schedules.enabled = 1
             """,
             (card_id,),
         ).fetchall()
@@ -143,10 +143,10 @@ class AccessPolicy:
             SELECT 1
             FROM card_rooms
             JOIN rooms
-              ON rooms.id = card_rooms.room_id
+                ON rooms.id = card_rooms.room_id
             WHERE card_rooms.card_id = ?
-              AND rooms.name = ?
-              AND rooms.enabled = 1
+            AND rooms.name = ?
+            AND rooms.enabled = 1
             """,
             (card_id, room_name),
         ).fetchone()
