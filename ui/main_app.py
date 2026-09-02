@@ -48,7 +48,7 @@ from database.database import Database
 from core.access_policy import AccessPolicy
 from core.app_controller import AppController
 from core.door_controller import DoorController
-from hardware.rfid_bitbang import RFIDBitBang
+from hardware.rfid_bitbanged import RFIDBitBang
 from hardware.relay_controller import RelayController
 from hardware.buzzer_controller import BuzzerController
 from hardware.mock_door import MockDoorSensor
