@@ -1,19 +1,23 @@
+import os
+
+# Force SDL2 window provider and small fixed window for the ILI9341.
+os.environ["KIVY_WINDOW"] = "sdl2"
+
+from kivy.config import Config
+Config.set("graphics", "width", "320")
+Config.set("graphics", "height", "240")
+Config.set("graphics", "resizable", "0")
+Config.set("graphics", "fullscreen", "0")
+Config.set("input", "mouse", "mouse")
+Config.write()
+
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.properties import StringProperty
 from kivy.uix.boxlayout import BoxLayout
-
-from config import MOCK_DOOR_CYCLE_SECONDS
-from database.database import Database
-from core.access_policy import AccessPolicy
-from core.app_controller import AppController
-from core.door_controller import DoorController
-from hardware.rfid_bitbang import RFIDBitBang
-from hardware.relay_controller import RelayController
-from hardware.buzzer_controller import BuzzerController
-from hardware.mock_door import MockDoorSensor
+from kivy.uix.label import Label
 
 
 KV = """
@@ -300,7 +304,6 @@ class AccessControlApp(App):
         admin.status_text = "Door manually locked."
 
     def on_exit_admin_button(self):
-        # Reuses the same exit path as re-scanning the admin card.
         admin_uid = self.controller.admin_uid
         if admin_uid:
             self.controller.handle_rfid_uid(admin_uid)
@@ -335,8 +338,6 @@ class AccessControlApp(App):
         logs_screen = self.sm.get_screen("logs")
         grid = logs_screen.ids.logs_grid
         grid.clear_widgets()
-
-        from kivy.uix.label import Label
 
         rows = self.database.connection.execute(
             """
