@@ -241,7 +241,7 @@ ScreenManager:
                 font_size: "16sp"
                 background_normal: ""
                 background_color: 0.10, 0.55, 0.25, 1
-                on_release: app.on_submit_enrollment(name_input.text,tier_spinner.text )
+                on_release: app.on_submit_enrollment(name_input.text, tier_spinner.text)
 
             Button:
                 text: "CANCEL"
@@ -329,9 +329,6 @@ class LogsScreen(Screen):
 
 class AccessControlApp(App):
     def build(self):
-        #Window.size = (320, 240)
-        #Window.fullscreen = True
-
         self.database = Database()
         self.policy = AccessPolicy(self.database)
 
@@ -363,8 +360,26 @@ class AccessControlApp(App):
         self.sm = Builder.load_string(KV)
         self.sm.transition = NoTransition()
 
+        # Temporary touch calibration overlay.
+        # Remove once invert_x/invert_y/rotation are confirmed correct.
+        self.touch_debug_label = Label(
+            text="Tap anywhere to test touch",
+            font_size="12sp",
+            size_hint=(None, None),
+            size=(300, 20),
+            pos=(10, 5),
+            color=(1, 1, 0, 1),
+        )
+        self.sm.add_widget(self.touch_debug_label)
+
+        Window.bind(on_touch_down=self.on_debug_touch)
+
         Clock.schedule_interval(self.poll_system, 0.05)
         return self.sm
+
+    def on_debug_touch(self, window, touch):
+        self.touch_debug_label.text = f"Touch at: x={touch.x:.0f}, y={touch.y:.0f}"
+        print(f"TOUCH: x={touch.x:.0f}, y={touch.y:.0f}")
 
     def poll_system(self, dt):
         self.controller.update()
