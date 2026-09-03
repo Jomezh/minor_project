@@ -370,7 +370,7 @@ class AccessControlApp(App):
             pos=(10, 5),
             color=(1, 1, 0, 1),
         )
-        self.sm.add_widget(self.touch_debug_label)
+        Window.add_widget(self.touch_debug_label)
 
         Window.bind(on_touch_down=self.on_debug_touch)
 
