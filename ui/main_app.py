@@ -39,7 +39,7 @@ from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.lang import Builder
-from kivy.properties import StringProperty
+from kivy.properties import StringProperty, ListProperty
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import NoTransition, Screen
 
@@ -308,7 +308,7 @@ ScreenManager:
 
 class HomeScreen(Screen):
     door_state_text = StringProperty("DOOR: LOCKED")
-    door_colour = StringProperty("0.30, 0.90, 0.45, 1")
+    door_colour = ListProperty([0.30, 0.90, 0.45, 1])
     status_text = StringProperty("Waiting for RFID card...")
 
 
@@ -396,10 +396,10 @@ class AccessControlApp(App):
 
         if self.door_controller.unlock_active:
             home.door_state_text = "DOOR: UNLOCKED"
-            home.door_colour = "1, 0.65, 0.15, 1"
+            home.door_colour = [1, 0.65, 0.15, 1]
         else:
             home.door_state_text = "DOOR: LOCKED"
-            home.door_colour = "0.30, 0.90, 0.45, 1"
+            home.door_colour = [0.30, 0.90, 0.45, 1]
 
     def handle_result(self, result):
         outcome = result.get("result", "")
