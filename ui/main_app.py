@@ -19,8 +19,8 @@ from kivy.config import Config
 Config.set("graphics", "width", "320")
 Config.set("graphics", "height", "240")
 Config.set("graphics", "resizable", "0")
-Config.set("graphics", "fullscreen", "1")
-Config.set("graphics", "borderless", "1")
+Config.set("graphics", "fullscreen", "0")
+Config.set("graphics", "borderless", "0")
 Config.set("kivy", "exit_on_escape", "0")
 
 # The log confirms the ADS7846/XPT2046 controller is /dev/input/event2.
