@@ -329,8 +329,8 @@ class LogsScreen(Screen):
 
 class AccessControlApp(App):
     def build(self):
-        Window.size = (320, 240)
-        Window.fullscreen = True
+        #Window.size = (320, 240)
+        #Window.fullscreen = True
 
         self.database = Database()
         self.policy = AccessPolicy(self.database)
