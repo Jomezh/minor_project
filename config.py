@@ -27,6 +27,7 @@ RFID_RST_PIN = 12
 RELAY_PIN = 5
 BUTTON_PIN = 26
 BUZZER_PIN = 6
+REED_SWITCH_PIN = 16
 
 # GPIO5 HIGH energizes the relay.
 RELAY_ACTIVE_LEVEL = 1
@@ -43,7 +44,7 @@ MOCK_DOOR_CYCLE_SECONDS = 5
 ALARM_REPEAT_SECONDS = 2
 
 # Set to True until the physical reed switch is installed.
-MOCK_REED_ENABLED = True
+MOCK_REED_ENABLED = False
 
 DATABASE_PATH = "access_control.db"
 
