@@ -1,9 +1,11 @@
+import threading
 import time
 
 from core.access_policy import AccessPolicy
 from core.app_controller import AppController
 from core.door_controller import DoorController
 from database.database import Database
+from hardware.button_input import ButtonInput
 from hardware.buzzer_controller import BuzzerController
 from hardware.reed_door_sensor import ReedDoorSensor
 from hardware.relay_controller import RelayController
@@ -36,15 +38,65 @@ app = AppController(
     buzzer=buzzer,
 )
 
+# RFID state.
 card_ready = True
 consecutive_misses = 0
+
+# Door/reed state used only for console messages.
 previous_door_closed = None
+
+# GPIO callbacks run outside the main program loop. The callback only sets
+# this flag; the actual relay/database work remains safely in the main loop.
+exit_requested = threading.Event()
+
+
+def on_exit_button_pressed():
+    exit_requested.set()
+
+
+button = ButtonInput(on_exit_button_pressed)
 
 
 def print_result(result):
     print()
     print(result)
     print()
+
+
+def print_door_state_if_changed():
+    global previous_door_closed
+
+    door_closed = door_sensor.is_closed()
+
+    if door_closed == previous_door_closed:
+        return
+
+    previous_door_closed = door_closed
+
+    if door_closed:
+        print("Door sensor: CLOSED")
+    else:
+        print("Door sensor: OPEN")
+
+
+def handle_exit_button_request():
+    if not exit_requested.is_set():
+        return
+
+    exit_requested.clear()
+
+    if door_controller.unlock_active:
+        print("Exit button pressed, but door unlock is already active.")
+        return
+
+    print()
+    print("Exit button pressed")
+    print("Unlocking door for exit")
+
+    door_controller.unlock(
+        reason="inside_exit_button",
+        actor_uid=None,
+    )
 
 
 def handle_console_enrollment(result):
@@ -58,7 +110,7 @@ def handle_console_enrollment(result):
     print("CARD ENROLLMENT")
     print("=" * 45)
     print(f"Card UID: {uid}")
-    print("Press Enter with no name to cancel.")
+    print("Press Enter without entering a name to cancel.")
     print()
 
     label = input("Cardholder name: ").strip()
@@ -86,22 +138,6 @@ def handle_console_enrollment(result):
     print_result(enrollment_result)
 
 
-def print_door_state_if_changed():
-    global previous_door_closed
-
-    closed = door_sensor.is_closed()
-
-    if closed == previous_door_closed:
-        return
-
-    previous_door_closed = closed
-
-    if closed:
-        print("Door sensor: CLOSED")
-    else:
-        print("Door sensor: OPEN")
-
-
 try:
     reader.initialize()
     relay.lock()
@@ -113,16 +149,23 @@ try:
         "CLOSED" if door_sensor.is_closed() else "OPEN",
     )
     print("Waiting for RFID card...")
+    print("Inside exit button is active.")
     print("Press Ctrl+C to stop.")
 
     while True:
+        # Handles reed-switch transitions:
+        # closed -> opened -> closed = automatic relay re-lock.
         app.update()
+
+        # Prints OPEN/CLOSED only when the reed-switch state changes.
         print_door_state_if_changed()
 
-        # Important:
-        # While a valid access event has the door unlocked, do not process
-        # new cards. DoorController will relock after the reed switch sees
-        # open -> closed, or after the configured timeout.
+        # Handles the physical inside exit button.
+        handle_exit_button_request()
+
+        # Do not process RFID while the relay is unlocked.
+        # This prevents repeated scans and admin-card toggling while
+        # somebody is passing through the door.
         if door_controller.unlock_active:
             time.sleep(LOOP_DELAY_SECONDS)
             continue
@@ -155,8 +198,8 @@ try:
 
         print_result(result)
 
-        # Enrollment is intentionally console-based for the no-UI version.
-        # This will be replaced by the Kivy enrollment form later.
+        # Console-only enrollment bridge.
+        # A later touchscreen UI can replace this with a Kivy form.
         handle_console_enrollment(result)
 
         time.sleep(LOOP_DELAY_SECONDS)
@@ -167,9 +210,10 @@ except KeyboardInterrupt:
 
 
 finally:
-    # Lock first, then release hardware resources.
+    # Always force the relay to the locked state before releasing GPIO.
     app.cleanup()
 
+    button.cleanup()
     buzzer.cleanup()
     door_sensor.cleanup()
     reader.cleanup()
