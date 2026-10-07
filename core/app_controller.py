@@ -83,7 +83,7 @@ class AppController:
             self.database.increment_use_count(card_id)
 
         else:
-            self.buzzer.deniedbeep()
+            self.buzzer.denied_beep()
 
         return {
             "allowed": decision.allowed,
@@ -111,7 +111,7 @@ class AppController:
             )
 
             self.admin_uid = None
-            self.buzzer.lockbeep()
+            self.buzzer.lock_beep()
 
             return {
                 "allowed": False,
@@ -131,7 +131,7 @@ class AppController:
         existing_card = self.database.get_card(uid)
 
         if existing_card:
-            self.buzzer.deniedbeep()
+            self.buzzer.denied_beep()
 
             return {
                 "allowed": False,
@@ -208,7 +208,7 @@ class AppController:
         )
 
         self.pending_enrollment_uid = None
-        self.buzzer.unlockbeep()
+        self.buzzer.unlock_beep()
 
         return {
             "allowed": False,
