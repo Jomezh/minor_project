@@ -1,14 +1,17 @@
 import time
 
-from config import MOCK_DOOR_CYCLE_SECONDS
-from database.database import Database
 from core.access_policy import AccessPolicy
 from core.app_controller import AppController
 from core.door_controller import DoorController
-from hardware.rfid_bitbanged import RFIDBitBang
-from hardware.relay_controller import RelayController
+from database.database import Database
 from hardware.buzzer_controller import BuzzerController
-from hardware.mock_door import MockDoorSensor
+from hardware.reed_door_sensor import ReedDoorSensor
+from hardware.relay_controller import RelayController
+from hardware.rfid_bitbanged import RFIDBitBang
+
+
+MISS_THRESHOLD = 6
+LOOP_DELAY_SECONDS = 0.05
 
 
 database = Database()
@@ -17,12 +20,12 @@ policy = AccessPolicy(database)
 reader = RFIDBitBang()
 relay = RelayController()
 buzzer = BuzzerController()
-door = MockDoorSensor(MOCK_DOOR_CYCLE_SECONDS)
+door_sensor = ReedDoorSensor()
 
 door_controller = DoorController(
     relay=relay,
     buzzer=buzzer,
-    door_sensor=door,
+    door_sensor=door_sensor,
     database=database,
 )
 
@@ -35,7 +38,13 @@ app = AppController(
 
 card_ready = True
 consecutive_misses = 0
-MISS_THRESHOLD = 6
+previous_door_closed = None
+
+
+def print_result(result):
+    print()
+    print(result)
+    print()
 
 
 def handle_console_enrollment(result):
@@ -45,21 +54,27 @@ def handle_console_enrollment(result):
     uid = result["uid"]
 
     print()
-    print(f"Enrollment started for card: {uid}")
+    print("=" * 45)
+    print("CARD ENROLLMENT")
+    print("=" * 45)
+    print(f"Card UID: {uid}")
+    print("Press Enter with no name to cancel.")
+    print()
 
-    label = input("Enter cardholder name: ").strip()
+    label = input("Cardholder name: ").strip()
 
     if not label:
-        print("Enrollment cancelled: name cannot be empty")
         app.cancel_enrollment()
+        print("Enrollment cancelled.")
+        print()
         return
 
     tier = input(
-        "Enter tier (guest/employee/admin): "
+        "Tier [guest / employee / admin]: "
     ).strip().lower()
 
     if tier not in ("guest", "employee", "admin"):
-        print("Invalid tier. Using guest.")
+        print("Invalid tier; using guest.")
         tier = "guest"
 
     enrollment_result = app.submit_enrollment(
@@ -68,18 +83,49 @@ def handle_console_enrollment(result):
         tier_value=tier,
     )
 
-    print(enrollment_result)
+    print_result(enrollment_result)
+
+
+def print_door_state_if_changed():
+    global previous_door_closed
+
+    closed = door_sensor.is_closed()
+
+    if closed == previous_door_closed:
+        return
+
+    previous_door_closed = closed
+
+    if closed:
+        print("Door sensor: CLOSED")
+    else:
+        print("Door sensor: OPEN")
 
 
 try:
     reader.initialize()
+    relay.lock()
 
     print("Access-control system started")
     print("Relay locked")
+    print(
+        "Door sensor:",
+        "CLOSED" if door_sensor.is_closed() else "OPEN",
+    )
     print("Waiting for RFID card...")
+    print("Press Ctrl+C to stop.")
 
     while True:
         app.update()
+        print_door_state_if_changed()
+
+        # Important:
+        # While a valid access event has the door unlocked, do not process
+        # new cards. DoorController will relock after the reed switch sees
+        # open -> closed, or after the configured timeout.
+        if door_controller.unlock_active:
+            time.sleep(LOOP_DELAY_SECONDS)
+            continue
 
         uid = reader.read_uid()
 
@@ -89,25 +135,31 @@ try:
             if consecutive_misses >= MISS_THRESHOLD:
                 card_ready = True
 
-        else:
-            consecutive_misses = 0
+            time.sleep(LOOP_DELAY_SECONDS)
+            continue
 
-            if card_ready:
-                card_ready = False
+        consecutive_misses = 0
 
-                normalized_uid = database.normalize_uid(uid)
+        if not card_ready:
+            time.sleep(LOOP_DELAY_SECONDS)
+            continue
 
-                print(f"Card detected: {normalized_uid}")
+        card_ready = False
 
-                result = app.handle_rfid_uid(normalized_uid)
+        normalized_uid = database.normalize_uid(uid)
 
-                print(result)
+        print()
+        print(f"Card detected: {normalized_uid}")
 
-                # Temporary console enrollment bridge.
-                # The future Kivy UI will replace this function.
-                handle_console_enrollment(result)
+        result = app.handle_rfid_uid(normalized_uid)
 
-        time.sleep(0.05)
+        print_result(result)
+
+        # Enrollment is intentionally console-based for the no-UI version.
+        # This will be replaced by the Kivy enrollment form later.
+        handle_console_enrollment(result)
+
+        time.sleep(LOOP_DELAY_SECONDS)
 
 
 except KeyboardInterrupt:
@@ -115,8 +167,11 @@ except KeyboardInterrupt:
 
 
 finally:
+    # Lock first, then release hardware resources.
     app.cleanup()
+
     buzzer.cleanup()
+    door_sensor.cleanup()
     reader.cleanup()
     database.close()
 

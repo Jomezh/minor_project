@@ -17,37 +17,38 @@ class AccessResult(str, Enum):
     DENIED = "denied"
 
 
-# Hardware GPIO assignments, BCM numbering.
+# GPIO numbering is BCM numbering, not physical pin numbering.
+
+# RFID MFRC522 bit-banged SPI wiring.
 RFID_CS_PIN = 18
 RFID_MISO_PIN = 19
 RFID_MOSI_PIN = 20
 RFID_SCK_PIN = 21
 RFID_RST_PIN = 12
 
+# Door hardware.
 RELAY_PIN = 5
-BUTTON_PIN = 26
 BUZZER_PIN = 6
+BUTTON_PIN = 26
 REED_SWITCH_PIN = 16
 
-# GPIO5 HIGH energizes the relay.
+# Relay states.
+# Keep these values aligned with your already-tested relay controller.
 RELAY_ACTIVE_LEVEL = 1
 RELAY_INACTIVE_LEVEL = 0
 
-# Initial administrator.
+# Initial bootstrap administrator.
 INITIAL_ADMIN_UID = "9E-24-41-06"
 
 # Door timing.
 DOOR_OPEN_TIMEOUT_SECONDS = 5
 DOOR_CLOSE_TIMEOUT_SECONDS = 30
-ADMIN_UNLOCK_TIMEOUT_SECONDS = 30
-MOCK_DOOR_CYCLE_SECONDS = 5
 ALARM_REPEAT_SECONDS = 2
 
-# Set to True until the physical reed switch is installed.
-MOCK_REED_ENABLED = False
-
+# Database.
 DATABASE_PATH = "access_control.db"
 
+# Schedules are retained for the existing access-policy system.
 DEFAULT_SCHEDULES = {
     "guest_daytime": {
         "name": "Guest daytime",

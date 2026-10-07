@@ -22,45 +22,68 @@ class AppController:
             return self._handle_admin_scan(uid)
 
         if self.access_policy.is_admin(uid):
-            self.mode = "admin_menu"
-            self.admin_uid = uid
+            return self._enter_admin_mode(uid)
 
-            self.door_controller.unlock(reason="admin_access", actor_uid=uid)
-            self.door_controller.enter_admin_override()
+        return self._handle_normal_access(uid)
 
-            self.database.add_log(
-                uid=uid,
-                event_type="admin_session",
-                result="opened",
-                reason="Admin card scanned, door unlocked",
-                actor_uid=uid,
-                door_state="unlocked",
-            )
+    def _enter_admin_mode(self, uid):
+        self.mode = "admin_menu"
+        self.admin_uid = uid
+        self.pending_enrollment_uid = None
 
-            return {
-                "allowed": True,
-                "result": "admin_mode",
-                "reason": "Admin mode entered, door unlocked",
-                "uid": uid,
-            }
+        self.database.add_log(
+            uid=uid,
+            event_type="admin_session",
+            result="opened",
+            reason="Admin card scanned",
+            actor_uid=uid,
+            door_state="unlocked",
+        )
 
+        self.door_controller.unlock(
+            reason="admin_access_granted",
+            actor_uid=uid,
+        )
+
+        return {
+            "allowed": True,
+            "result": "admin_mode",
+            "reason": "Admin access granted; door unlocked",
+            "uid": uid,
+        }
+
+    def _handle_normal_access(self, uid):
         decision = self.access_policy.evaluate_normal_access(uid)
-        result_value = getattr(decision.result, "value", decision.result)
+
+        result_value = getattr(
+            decision.result,
+            "value",
+            decision.result,
+        )
+
+        card_id = None
+        if decision.card:
+            card_id = decision.card["id"]
 
         self.database.add_log(
             uid=uid,
             event_type="scan",
             result=result_value,
             reason=decision.reason,
-            card_id=decision.card["id"] if decision.card else None,
+            card_id=card_id,
             door_state="unlocked" if decision.allowed else "locked",
         )
 
         if decision.allowed:
-            self.door_controller.unlock(reason="access_granted", actor_uid=uid)
-            self.database.increment_use_count(decision.card["id"])
+            self.door_controller.unlock(
+                reason="access_granted",
+                actor_uid=uid,
+            )
+
+            self.database.increment_use_count(card_id)
+
         else:
-            self.buzzer.denied_beep()
+            self.buzzer.deniedbeep()
 
         return {
             "allowed": decision.allowed,
@@ -70,78 +93,99 @@ class AppController:
         }
 
     def _handle_admin_scan(self, uid):
-        # A card enrollment is already waiting on UI input for this UID.
-        # Ignore repeat scans of the same unenrolled card until the
-        # pending form is submitted or cancelled.
-        if self.pending_enrollment_uid == uid:
-            return {
-                "allowed": False,
-                "result": "enrollment_pending",
-                "reason": "Waiting for enrollment details to be submitted",
-                "uid": uid,
-            }
-
         if uid == self.admin_uid:
             self.mode = "normal"
             self.pending_enrollment_uid = None
-            self.door_controller.exit_admin_override()
 
             self.database.add_log(
                 uid=uid,
                 event_type="admin_session",
                 result="closed",
-                reason="Admin re-scanned own card, door relocked",
-                actor_uid=self.admin_uid,
-                door_state="locked",
+                reason="Admin re-scanned own card",
+                actor_uid=uid,
+                door_state=(
+                    "unlocked"
+                    if self.door_controller.unlock_active
+                    else "locked"
+                ),
             )
 
             self.admin_uid = None
+            self.buzzer.lockbeep()
 
             return {
                 "allowed": False,
                 "result": "admin_mode_exited",
-                "reason": "Exited admin mode, door locked",
+                "reason": "Admin mode exited",
                 "uid": uid,
             }
 
-        existing = self.database.get_card(uid)
+        if self.pending_enrollment_uid == uid:
+            return {
+                "allowed": False,
+                "result": "enrollment_pending",
+                "reason": "Waiting for enrollment details",
+                "uid": uid,
+            }
 
-        if existing:
-            self.buzzer.denied_beep()
+        existing_card = self.database.get_card(uid)
+
+        if existing_card:
+            self.buzzer.deniedbeep()
 
             return {
                 "allowed": False,
                 "result": "admin_card_lookup",
-                "reason": f"Already enrolled as {existing['label']} ({existing['tier']})",
+                "reason": (
+                    f"Already enrolled: "
+                    f"{existing_card['label']} "
+                    f"({existing_card['tier']})"
+                ),
                 "uid": uid,
             }
 
         return self.start_enrollment(uid)
 
     def start_enrollment(self, uid):
-        # Non-blocking: hands the UID to the UI, which is expected to
-        # show a form and call submit_enrollment() or cancel_enrollment().
         self.pending_enrollment_uid = uid
 
         return {
             "allowed": False,
             "result": "enrollment_started",
-            "reason": f"Unknown card {uid} scanned, awaiting enrollment details",
+            "reason": "Unknown card is ready for enrollment",
             "uid": uid,
         }
 
     def submit_enrollment(self, uid, label, tier_value):
-        if self.pending_enrollment_uid != uid:
+        uid = self.database.normalize_uid(uid)
+
+        if uid != self.pending_enrollment_uid:
             return {
                 "allowed": False,
                 "result": "enrollment_error",
-                "reason": "No pending enrollment for this UID",
+                "reason": "No matching pending enrollment",
                 "uid": uid,
             }
 
-        tier_map = {tier.value: tier for tier in Tier}
-        tier = tier_map.get(tier_value.lower(), Tier.GUEST)
-        label = label.strip() or "Unnamed"
+        label = label.strip()
+
+        if not label:
+            return {
+                "allowed": False,
+                "result": "enrollment_error",
+                "reason": "Cardholder name cannot be empty",
+                "uid": uid,
+            }
+
+        tier_map = {
+            tier.value: tier
+            for tier in Tier
+        }
+
+        tier = tier_map.get(
+            tier_value.strip().lower(),
+            Tier.GUEST,
+        )
 
         card_id = self.database.create_card(
             uid=uid,
@@ -154,14 +198,17 @@ class AppController:
             uid=uid,
             event_type="enrollment",
             result="enrolled",
-            reason=f"Enrolled by admin {self.admin_uid} as {tier.value}",
+            reason=(
+                f"Enrolled as {tier.value} "
+                f"by admin {self.admin_uid}"
+            ),
             actor_uid=self.admin_uid,
             card_id=card_id,
             door_state="locked",
         )
 
         self.pending_enrollment_uid = None
-        self.buzzer.unlock_beep()
+        self.buzzer.unlockbeep()
 
         return {
             "allowed": False,
@@ -172,14 +219,6 @@ class AppController:
 
     def cancel_enrollment(self):
         self.pending_enrollment_uid = None
-
-    def admin_manual_unlock(self):
-        if self.mode == "admin_menu":
-            self.door_controller.admin_set_state(True, actor_uid=self.admin_uid)
-
-    def admin_manual_lock(self):
-        if self.mode == "admin_menu":
-            self.door_controller.admin_set_state(False, actor_uid=self.admin_uid)
 
     def cleanup(self):
         self.door_controller.cleanup()
