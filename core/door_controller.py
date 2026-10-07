@@ -24,7 +24,7 @@ class DoorController:
             return False
 
         self.relay.unlock()
-        self.buzzer.unlockbeep()
+        self.buzzer.unlock_beep()
 
         self.unlock_active = True
         self.door_has_opened = False
@@ -47,7 +47,7 @@ class DoorController:
             return False
 
         self.relay.lock()
-        self.buzzer.lockbeep()
+        self.buzzer.lock_beep()
 
         self.unlock_active = False
         self.door_has_opened = False
@@ -102,7 +102,7 @@ class DoorController:
                 self.last_alarm_at is None
                 or now - self.last_alarm_at >= ALARM_REPEAT_SECONDS
             ):
-                self.buzzer.alarmbeep()
+                self.buzzer.alarm_beep()
                 self.last_alarm_at = now
 
                 self.database.add_log(
