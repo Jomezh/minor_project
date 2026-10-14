@@ -78,7 +78,6 @@ class Database:
             );
             """
         )
-
         self.seed_defaults()
         self.connection.commit()
 
@@ -93,15 +92,11 @@ class Database:
 
         uid = str(uid).replace(":", "-").replace(" ", "-")
         parts = [part for part in uid.split("-") if part]
-
         return "-".join(part.upper().zfill(2) for part in parts)
 
     def seed_defaults(self):
         self.connection.execute(
-            """
-            INSERT OR IGNORE INTO rooms(name, enabled)
-            VALUES (?, 1)
-            """,
+            "INSERT OR IGNORE INTO rooms(name, enabled) VALUES (?, 1)",
             ("Main Entrance",),
         )
 
@@ -113,7 +108,7 @@ class Database:
                 VALUES (?, ?, ?, ?)
                 """,
                 (
-                    key,
+                    schedule["name"],
                     json.dumps(schedule["days"]),
                     schedule["start"],
                     schedule["end"],
@@ -129,36 +124,20 @@ class Database:
             (uid, label, tier, active, created_by, created_at, updated_at)
             VALUES (?, ?, ?, 1, ?, ?, ?)
             """,
-            (
-                uid,
-                "Initial Admin",
-                Tier.ADMIN.value,
-                uid,
-                now,
-                now,
-            ),
+            (uid, "Initial Admin", Tier.ADMIN.value, uid, now, now),
         )
+
+    # ---------------- Cards ----------------
 
     def get_card(self, uid):
         uid = self.normalize_uid(uid)
-
         return self.connection.execute(
-            """
-            SELECT *
-            FROM cards
-            WHERE uid = ?
-            """,
-            (uid,),
+            "SELECT * FROM cards WHERE uid = ?", (uid,)
         ).fetchone()
 
     def get_card_by_id(self, card_id):
         return self.connection.execute(
-            """
-            SELECT *
-            FROM cards
-            WHERE id = ?
-            """,
-            (card_id,),
+            "SELECT * FROM cards WHERE id = ?", (card_id,)
         ).fetchone()
 
     def list_cards(self):
@@ -166,7 +145,13 @@ class Database:
             """
             SELECT *
             FROM cards
-            ORDER BY tier, label
+            ORDER BY
+                CASE tier
+                    WHEN 'admin' THEN 0
+                    WHEN 'employee' THEN 1
+                    ELSE 2
+                END,
+                label
             """
         ).fetchall()
 
@@ -187,16 +172,8 @@ class Database:
             """
             INSERT INTO cards
             (
-                uid,
-                label,
-                tier,
-                active,
-                valid_from,
-                valid_until,
-                max_uses,
-                created_by,
-                created_at,
-                updated_at
+                uid, label, tier, active, valid_from, valid_until,
+                max_uses, created_by, created_at, updated_at
             )
             VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
             """,
@@ -212,7 +189,6 @@ class Database:
                 now,
             ),
         )
-
         self.connection.commit()
         return cursor.lastrowid
 
@@ -228,9 +204,7 @@ class Database:
         }
 
         changes = {
-            key: value
-            for key, value in fields.items()
-            if key in allowed
+            key: value for key, value in fields.items() if key in allowed
         }
 
         if not changes:
@@ -240,35 +214,125 @@ class Database:
             changes["tier"] = changes["tier"].value
 
         changes["updated_at"] = self.now()
-
-        assignments = ", ".join(
-            f"{key} = ?" for key in changes
-        )
-
+        assignments = ", ".join(f"{key} = ?" for key in changes)
         values = list(changes.values())
         values.append(card_id)
 
         self.connection.execute(
-            f"""
-            UPDATE cards
-            SET {assignments}
-            WHERE id = ?
-            """,
+            f"UPDATE cards SET {assignments} WHERE id = ?",
             values,
         )
+        self.connection.commit()
+
+    def delete_card(self, card_id):
+        self.connection.execute(
+            "DELETE FROM card_schedules WHERE card_id = ?", (card_id,)
+        )
+        self.connection.execute(
+            "DELETE FROM card_rooms WHERE card_id = ?", (card_id,)
+        )
+        self.connection.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         self.connection.commit()
 
     def increment_use_count(self, card_id):
         self.connection.execute(
             """
             UPDATE cards
-            SET uses_count = uses_count + 1,
-                updated_at = ?
+            SET uses_count = uses_count + 1, updated_at = ?
             WHERE id = ?
             """,
             (self.now(), card_id),
         )
         self.connection.commit()
+
+    # ---------------- Schedules ----------------
+
+    def list_schedules(self):
+        return self.connection.execute(
+            "SELECT * FROM schedules ORDER BY name"
+        ).fetchall()
+
+    def get_schedule(self, schedule_id):
+        return self.connection.execute(
+            "SELECT * FROM schedules WHERE id = ?", (schedule_id,)
+        ).fetchone()
+
+    def get_schedule_by_name(self, name):
+        return self.connection.execute(
+            "SELECT * FROM schedules WHERE name = ?", (name,)
+        ).fetchone()
+
+    def create_schedule(self, name, days, start_time, end_time, enabled=True):
+        cursor = self.connection.execute(
+            """
+            INSERT INTO schedules
+            (name, days_json, start_time, end_time, enabled)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (name, json.dumps(days), start_time, end_time, int(enabled)),
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def update_schedule(self, schedule_id, **fields):
+        allowed = {
+            "name",
+            "days_json",
+            "start_time",
+            "end_time",
+            "enabled",
+        }
+
+        changes = {
+            key: value for key, value in fields.items() if key in allowed
+        }
+
+        if not changes:
+            return
+
+        assignments = ", ".join(f"{key} = ?" for key in changes)
+        values = list(changes.values())
+        values.append(schedule_id)
+
+        self.connection.execute(
+            f"UPDATE schedules SET {assignments} WHERE id = ?",
+            values,
+        )
+        self.connection.commit()
+
+    def delete_schedule(self, schedule_id):
+        self.connection.execute(
+            "DELETE FROM card_schedules WHERE schedule_id = ?", (schedule_id,)
+        )
+        self.connection.execute(
+            "DELETE FROM schedules WHERE id = ?", (schedule_id,)
+        )
+        self.connection.commit()
+
+    def set_card_schedules(self, card_id, schedule_ids):
+        self.connection.execute(
+            "DELETE FROM card_schedules WHERE card_id = ?", (card_id,)
+        )
+
+        for schedule_id in schedule_ids:
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO card_schedules(card_id, schedule_id)
+                VALUES (?, ?)
+                """,
+                (card_id, schedule_id),
+            )
+
+        self.connection.commit()
+
+    def get_card_schedule_ids(self, card_id):
+        rows = self.connection.execute(
+            "SELECT schedule_id FROM card_schedules WHERE card_id = ?",
+            (card_id,),
+        ).fetchall()
+        return [row["schedule_id"] for row in rows]
+
+    # ---------------- Logs ----------------
 
     def add_log(
         self,
@@ -284,14 +348,8 @@ class Database:
             """
             INSERT INTO access_logs
             (
-                uid,
-                card_id,
-                event_type,
-                result,
-                reason,
-                actor_uid,
-                door_state,
-                created_at
+                uid, card_id, event_type, result, reason,
+                actor_uid, door_state, created_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -307,6 +365,17 @@ class Database:
             ),
         )
         self.connection.commit()
+
+    def list_logs(self, limit=60):
+        return self.connection.execute(
+            """
+            SELECT *
+            FROM access_logs
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
 
     def close(self):
         self.connection.close()

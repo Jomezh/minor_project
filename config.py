@@ -32,6 +32,17 @@ BUZZER_PIN = 6
 BUTTON_PIN = 26
 REED_SWITCH_PIN = 16
 
+# Development mode.
+#
+# True:
+#     Runs laptop simulation code.
+#     No RPi.GPIO import or real hardware is required.
+#
+# False:
+#     Uses Raspberry Pi RFID, relay, buzzer, reed switch,
+#     and inside exit-button hardware.
+SIMULATION_MODE = False
+
 # Relay states.
 # Keep these values aligned with your already-tested relay controller.
 RELAY_ACTIVE_LEVEL = 1

@@ -1,222 +1,941 @@
+import json
 import threading
-import time
+from datetime import datetime, timezone
 
+from kivy.config import Config
+
+Config.set("graphics", "width", "900")
+Config.set("graphics", "height", "600")
+Config.set("graphics", "resizable", "1")
+Config.set("kivy", "exit_on_escape", "0")
+
+from kivy.app import App
+from kivy.clock import Clock
+from kivy.metrics import dp
+from kivy.properties import BooleanProperty
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+
+from config import SIMULATION_MODE
 from core.access_policy import AccessPolicy
 from core.app_controller import AppController
 from core.door_controller import DoorController
 from database.database import Database
-from hardware.button_input import ButtonInput
-from hardware.buzzer_controller import BuzzerController
-from hardware.reed_door_sensor import ReedDoorSensor
-from hardware.relay_controller import RelayController
-from hardware.rfid_bitbanged import RFIDBitBang
+from hardware.hardware_factory import create_hardware
+from ui import build_ui
+from ui.theme import WEEKDAYS, action_button, message_label
 
+class AccessControlKivyApp(App):
+    simulation_mode = BooleanProperty(SIMULATION_MODE)
 
-MISS_THRESHOLD = 6
-LOOP_DELAY_SECONDS = 0.05
+    def build(self):
+        self.database = Database()
+        self.policy = AccessPolicy(self.database)
 
+        self.exit_requested = threading.Event()
+        self.hardware = create_hardware(self.on_physical_exit_button)
 
-database = Database()
-policy = AccessPolicy(database)
+        self.reader = self.hardware["reader"]
+        self.relay = self.hardware["relay"]
+        self.buzzer = self.hardware["buzzer"]
+        self.door_sensor = self.hardware["door_sensor"]
+        self.button = self.hardware["button"]
 
-reader = RFIDBitBang()
-relay = RelayController()
-buzzer = BuzzerController()
-door_sensor = ReedDoorSensor()
+        self.door_controller = DoorController(
+            relay=self.relay,
+            buzzer=self.buzzer,
+            door_sensor=self.door_sensor,
+            database=self.database,
+        )
 
-door_controller = DoorController(
-    relay=relay,
-    buzzer=buzzer,
-    door_sensor=door_sensor,
-    database=database,
-)
+        self.controller = AppController(
+            database=self.database,
+            access_policy=self.policy,
+            door_controller=self.door_controller,
+            buzzer=self.buzzer,
+        )
 
-app = AppController(
-    database=database,
-    access_policy=policy,
-    door_controller=door_controller,
-    buzzer=buzzer,
-)
+        self.reader.initialize()
+        self.relay.lock()
 
-# RFID state.
-card_ready = True
-consecutive_misses = 0
+        self.card_ready = True
+        self.consecutive_misses = 0
+        self.miss_threshold = 6
 
-# Door/reed state used only for console messages.
-previous_door_closed = None
+        self.current_edit_card_id = None
+        self.current_edit_schedule_id = None
 
-# GPIO callbacks run outside the main program loop. The callback only sets
-# this flag; the actual relay/database work remains safely in the main loop.
-exit_requested = threading.Event()
+        self.keyboard_callback = None
+        self.keyboard_numeric = False
+        self.keyboard_value = ""
 
+        self.datetime_callback = None
+        self.confirm_callback = None
 
-def on_exit_button_pressed():
-    exit_requested.set()
+        self.sm = build_ui(self)
 
+        Clock.schedule_interval(self.system_tick, 0.05)
+        return self.sm
 
-button = ButtonInput(on_exit_button_pressed)
+    # ---------------- Hardware / polling ----------------
 
+    def on_physical_exit_button(self):
+        self.exit_requested.set()
 
-def print_result(result):
-    print()
-    print(result)
-    print()
+    def system_tick(self, dt):
+        self.controller.update()
+        self.update_home_state()
+        self.process_exit_request()
 
+        if self.door_controller.unlock_active:
+            return
 
-def print_door_state_if_changed():
-    global previous_door_closed
-
-    door_closed = door_sensor.is_closed()
-
-    if door_closed == previous_door_closed:
-        return
-
-    previous_door_closed = door_closed
-
-    if door_closed:
-        print("Door sensor: CLOSED")
-    else:
-        print("Door sensor: OPEN")
-
-
-def handle_exit_button_request():
-    if not exit_requested.is_set():
-        return
-
-    exit_requested.clear()
-
-    if door_controller.unlock_active:
-        print("Exit button pressed, but door unlock is already active.")
-        return
-
-    print()
-    print("Exit button pressed")
-    print("Unlocking door for exit")
-
-    door_controller.unlock(
-        reason="inside_exit_button",
-        actor_uid=None,
-    )
-
-
-def handle_console_enrollment(result):
-    if result.get("result") != "enrollment_started":
-        return
-
-    uid = result["uid"]
-
-    print()
-    print("=" * 45)
-    print("CARD ENROLLMENT")
-    print("=" * 45)
-    print(f"Card UID: {uid}")
-    print("Press Enter without entering a name to cancel.")
-    print()
-
-    label = input("Cardholder name: ").strip()
-
-    if not label:
-        app.cancel_enrollment()
-        print("Enrollment cancelled.")
-        print()
-        return
-
-    tier = input(
-        "Tier [guest / employee / admin]: "
-    ).strip().lower()
-
-    if tier not in ("guest", "employee", "admin"):
-        print("Invalid tier; using guest.")
-        tier = "guest"
-
-    enrollment_result = app.submit_enrollment(
-        uid=uid,
-        label=label,
-        tier_value=tier,
-    )
-
-    print_result(enrollment_result)
-
-
-try:
-    reader.initialize()
-    relay.lock()
-
-    print("Access-control system started")
-    print("Relay locked")
-    print(
-        "Door sensor:",
-        "CLOSED" if door_sensor.is_closed() else "OPEN",
-    )
-    print("Waiting for RFID card...")
-    print("Inside exit button is active.")
-    print("Press Ctrl+C to stop.")
-
-    while True:
-        # Handles reed-switch transitions:
-        # closed -> opened -> closed = automatic relay re-lock.
-        app.update()
-
-        # Prints OPEN/CLOSED only when the reed-switch state changes.
-        print_door_state_if_changed()
-
-        # Handles the physical inside exit button.
-        handle_exit_button_request()
-
-        # Do not process RFID while the relay is unlocked.
-        # This prevents repeated scans and admin-card toggling while
-        # somebody is passing through the door.
-        if door_controller.unlock_active:
-            time.sleep(LOOP_DELAY_SECONDS)
-            continue
-
-        uid = reader.read_uid()
+        uid = self.reader.read_uid()
 
         if uid is None:
-            consecutive_misses += 1
+            self.consecutive_misses += 1
 
-            if consecutive_misses >= MISS_THRESHOLD:
-                card_ready = True
+            if self.consecutive_misses >= self.miss_threshold:
+                self.card_ready = True
 
-            time.sleep(LOOP_DELAY_SECONDS)
-            continue
+            return
 
-        consecutive_misses = 0
+        self.consecutive_misses = 0
 
-        if not card_ready:
-            time.sleep(LOOP_DELAY_SECONDS)
-            continue
+        if not self.card_ready:
+            return
 
-        card_ready = False
+        self.card_ready = False
 
-        normalized_uid = database.normalize_uid(uid)
+        normalized_uid = self.database.normalize_uid(uid)
+        result = self.controller.handle_rfid_uid(normalized_uid)
+        self.handle_result(result)
 
-        print()
-        print(f"Card detected: {normalized_uid}")
+    def process_exit_request(self):
+        if not self.exit_requested.is_set():
+            return
 
-        result = app.handle_rfid_uid(normalized_uid)
+        self.exit_requested.clear()
 
-        print_result(result)
+        if self.door_controller.unlock_active:
+            return
 
-        # Console-only enrollment bridge.
-        # A later touchscreen UI can replace this with a Kivy form.
-        handle_console_enrollment(result)
+        self.door_controller.unlock(
+            reason="inside_exit_button",
+            actor_uid=None,
+        )
 
-        time.sleep(LOOP_DELAY_SECONDS)
+        self.home_status_label.text = "Exit request accepted\nDoor unlocked"
+
+    def update_home_state(self):
+        if self.door_controller.unlock_active:
+            self.home_door_label.text = "DOOR: UNLOCKED"
+            self.home_door_label.color = (1, 0.65, 0.15, 1)
+        else:
+            self.home_door_label.text = "DOOR: LOCKED"
+            self.home_door_label.color = (0.30, 0.90, 0.45, 1)
+
+        if self.controller.mode == "admin_menu":
+            self.home_mode_label.text = "MODE: ADMIN"
+        elif self.controller.mode == "enrollment":
+            self.home_mode_label.text = "MODE: ENROLLMENT"
+        else:
+            self.home_mode_label.text = "MODE: NORMAL"
+
+    def handle_result(self, result):
+        outcome = result.get("result", "")
+        uid = result.get("uid", "")
+        reason = result.get("reason", "")
+
+        if outcome == "admin_mode":
+            self.admin_status_label.text = (
+                f"Admin authenticated\nUID: {uid}\nDoor unlocked"
+            )
+            self.refresh_users()
+            self.refresh_schedules()
+            self.refresh_user_schedule_choices()
+            self.refresh_schedule_spinner(self.enroll_schedule_spinner)
+            self.sm.current = "admin"
+            return
+
+        if outcome == "admin_mode_exited":
+            self.home_status_label.text = "Admin mode exited"
+            self.sm.current = "home"
+            return
+
+        if outcome == "enrollment_started":
+            self.enroll_uid_label.text = f"Card UID: {uid}"
+            self.enroll_name_button.text = "Cardholder name"
+            self.enroll_tier_spinner.text = "employee"
+            self.enroll_message_label.text = ""
+            self.refresh_schedule_spinner(self.enroll_schedule_spinner)
+            self.sm.current = "enroll"
+            return
+
+        if outcome == "enrollment_pending":
+            return
+
+        if outcome == "admin_card_lookup":
+            self.admin_status_label.text = reason
+            self.sm.current = "admin"
+            return
+
+        if outcome == "granted":
+            self.home_status_label.text = (
+                f"ACCESS GRANTED\n{reason}\nUID: {uid}"
+            )
+        else:
+            self.home_status_label.text = (
+                f"ACCESS DENIED\n{reason}\nUID: {uid}"
+            )
+
+        self.sm.current = "home"
+
+    # ---------------- Navigation ----------------
+
+    def open_users(self):
+        self.refresh_users()
+        self.sm.current = "users"
+
+    def back_to_users(self):
+        self.refresh_users()
+        self.sm.current = "users"
+
+    def open_schedules(self):
+        self.refresh_schedules()
+        self.sm.current = "schedules"
+
+    def back_to_schedules(self):
+        self.refresh_schedules()
+        self.sm.current = "schedules"
+
+    def open_logs(self):
+        self.refresh_logs()
+        self.sm.current = "logs"
+
+    def back_to_admin(self):
+        self.refresh_users()
+        self.refresh_schedules()
+        self.refresh_user_schedule_choices()
+        self.sm.current = "admin"
+
+    # ---------------- Users ----------------
+
+    def refresh_users(self):
+        self.users_list.clear_widgets()
+        self.users_list.height = dp(1)
+
+        cards = self.database.list_cards()
+
+        if not cards:
+            self.users_list.add_widget(message_label("No users enrolled."))
+            return
+
+        for card in cards:
+            row = BoxLayout(spacing=dp(6), size_hint_y=None, height=dp(62))
+
+            info = Label(
+                text=(
+                    f"{card['label']}\n"
+                    f"{card['tier'].upper()} | "
+                    f"{'ACTIVE' if card['active'] else 'DISABLED'}\n"
+                    f"{card['uid']}"
+                ),
+                font_size="14sp",
+                halign="left",
+                valign="middle",
+                color=(0.93, 0.93, 0.93, 1),
+                size_hint_x=0.72,
+            )
+            info.bind(
+                width=lambda instance, value: setattr(
+                    instance, "text_size", (value, None)
+                )
+            )
+
+            edit = action_button(
+                "EDIT",
+                lambda card_id=card["id"]: self.open_user_editor(card_id),
+                (0.12, 0.45, 0.80, 1),
+                52,
+            )
+            edit.size_hint_x = 0.28
+
+            row.add_widget(info)
+            row.add_widget(edit)
+            self.users_list.add_widget(row)
+            self.users_list.height += dp(68)
+
+    def open_user_editor(self, card_id):
+        self.current_edit_card_id = card_id
+        card = self.database.get_card_by_id(card_id)
+
+        if not card:
+            return
+
+        self.user_name_button.text = card["label"]
+        self.user_tier_spinner.text = card["tier"]
+        self.user_status_spinner.text = (
+            "active" if card["active"] else "disabled"
+        )
+
+        schedule_ids = self.database.get_card_schedule_ids(card_id)
+        schedules = self.database.list_schedules()
+
+        selected = "No schedule"
+        for schedule in schedules:
+            if schedule["id"] in schedule_ids:
+                selected = schedule["name"]
+                break
+
+        self.user_schedule_spinner.text = selected
+        self.user_valid_from_button.text = card["valid_from"] or "Not set"
+        self.user_valid_until_button.text = card["valid_until"] or "Not set"
+        self.user_max_uses_button.text = (
+            str(card["max_uses"])
+            if card["max_uses"] is not None
+            else "No limit"
+        )
+
+        self.user_editor_status_label.text = ""
+        self.sm.current = "user_editor"
+
+    def set_user_name(self, value):
+        self.user_name_button.text = f"Name: {value}"
+        self.sm.current = "user_editor"
+
+    def set_user_valid_from(self, value):
+        self.user_valid_from_button.text = f"Valid from: {value or 'Not set'}"
+        self.sm.current = "user_editor"
+
+    def set_user_valid_until(self, value):
+        self.user_valid_until_button.text = (
+            f"Valid until: {value or 'Not set'}"
+        )
+        self.sm.current = "user_editor"
+
+    def set_user_max_uses(self, value):
+        if not value.strip():
+            self.user_max_uses_button.text = "Max uses: No limit"
+        else:
+            self.user_max_uses_button.text = f"Max uses: {value.strip()}"
+
+        self.sm.current = "user_editor"
+
+    def save_user(self):
+        if self.current_edit_card_id is None:
+            return
+
+        name = self.user_name_button.text.replace("Name: ", "")
+        status = self.user_status_spinner.text == "active"
+        schedule_name = self.user_schedule_spinner.text
+
+        schedule_ids = []
+        if schedule_name != "No schedule":
+            schedule = self.database.get_schedule_by_name(schedule_name)
+            if schedule:
+                schedule_ids.append(schedule["id"])
+
+        valid_from = self.user_valid_from_button.text.replace(
+            "Valid from: ", ""
+        )
+        valid_until = self.user_valid_until_button.text.replace(
+            "Valid until: ", ""
+        )
+        max_uses_text = self.user_max_uses_button.text.replace(
+            "Max uses: ", ""
+        )
+
+        max_uses = None
+        if max_uses_text not in ("No limit", ""):
+            try:
+                max_uses = int(max_uses_text)
+            except ValueError:
+                self.user_editor_status_label.text = (
+                    "Max uses must be a number"
+                )
+                return
+
+        result = self.controller.update_user(
+            card_id=self.current_edit_card_id,
+            actor_uid=self.controller.admin_uid,
+            label=name,
+            tier_value=self.user_tier_spinner.text,
+            active=status,
+            valid_from=valid_from if valid_from != "Not set" else None,
+            valid_until=valid_until if valid_until != "Not set" else None,
+            max_uses=max_uses,
+            schedule_ids=schedule_ids,
+        )
+
+        self.user_editor_status_label.text = result["message"]
+
+        if result["ok"]:
+            self.refresh_users()
+            self.refresh_user_schedule_choices()
+
+    def confirm_delete_user(self):
+        if self.current_edit_card_id is None:
+            return
+
+        card = self.database.get_card_by_id(self.current_edit_card_id)
+        if not card:
+            return
+
+        self.open_confirm(
+            f"Delete {card['label']}?\nThis cannot be undone.",
+            self.delete_user_confirmed,
+        )
+
+    def delete_user_confirmed(self):
+        result = self.controller.delete_user(
+            self.current_edit_card_id,
+            self.controller.admin_uid,
+        )
+
+        if result["ok"]:
+            self.current_edit_card_id = None
+            self.refresh_users()
+            self.back_to_users()
+        else:
+            self.user_editor_status_label.text = result["message"]
+
+    # ---------------- Enrollment ----------------
+
+    def open_enroll(self):
+        self.enroll_uid_label.text = "Scan an unknown RFID card."
+        self.enroll_name_button.text = "Cardholder name"
+        self.enroll_tier_spinner.text = "employee"
+        self.enroll_message_label.text = ""
+        self.refresh_schedule_spinner(self.enroll_schedule_spinner)
+        self.sm.current = "enroll"
+
+    def set_enroll_name(self, value):
+        self.enroll_name_button.text = value or "Cardholder name"
+        self.sm.current = "enroll"
+
+    def on_enroll_tier_changed(self, spinner, value):
+        if value == Tier.ADMIN.value:
+            schedule = self.database.get_schedule_by_name("Always allowed")
+        elif value == Tier.EMPLOYEE.value:
+            schedule = self.database.get_schedule_by_name("Employee weekdays")
+        else:
+            schedule = self.database.get_schedule_by_name("Guest daytime")
+
+        if schedule:
+            self.enroll_schedule_spinner.text = schedule["name"]
+
+    def save_enrollment(self):
+        uid = self.controller.pending_enrollment_uid
+
+        if not uid:
+            self.enroll_message_label.text = (
+                "No card is waiting for enrollment."
+            )
+            return
+
+        name = self.enroll_name_button.text
+
+        if name == "Cardholder name" or not name.strip():
+            self.enroll_message_label.text = "Enter a cardholder name."
+            return
+
+        schedule_name = self.enroll_schedule_spinner.text
+        schedule_id = None
+
+        if schedule_name != "No schedule":
+            schedule = self.database.get_schedule_by_name(schedule_name)
+            if schedule:
+                schedule_id = schedule["id"]
+
+        result = self.controller.submit_enrollment(
+            uid=uid,
+            label=name.strip(),
+            tier_value=self.enroll_tier_spinner.text,
+            schedule_id=schedule_id,
+        )
+
+        self.enroll_message_label.text = result["reason"]
+
+        if result["result"] == "enrolled":
+            self.refresh_users()
+            self.refresh_user_schedule_choices()
+            self.back_to_admin()
+
+    def cancel_enrollment(self):
+        self.controller.cancel_enrollment()
+        self.back_to_admin()
+
+    # ---------------- Schedules ----------------
+
+    def refresh_schedules(self):
+        self.schedules_list.clear_widgets()
+        self.schedules_list.height = dp(1)
+
+        schedules = self.database.list_schedules()
+
+        if not schedules:
+            self.schedules_list.add_widget(
+                message_label("No schedules found.")
+            )
+            return
+
+        for schedule in schedules:
+            days = json.loads(schedule["days_json"])
+            day_text = ", ".join(WEEKDAYS[d] for d in days)
+
+            row = BoxLayout(spacing=dp(6), size_hint_y=None, height=dp(70))
+
+            info = Label(
+                text=(
+                    f"{schedule['name']}\n"
+                    f"{day_text}\n"
+                    f"{schedule['start_time']} - {schedule['end_time']} | "
+                    f"{'ON' if schedule['enabled'] else 'OFF'}"
+                ),
+                font_size="14sp",
+                halign="left",
+                valign="middle",
+                color=(0.93, 0.93, 0.93, 1),
+                size_hint_x=0.72,
+            )
+            info.bind(
+                width=lambda instance, value: setattr(
+                    instance, "text_size", (value, None)
+                )
+            )
+
+            edit = action_button(
+                "EDIT",
+                lambda schedule_id=schedule["id"]: self.open_schedule_editor(
+                    schedule_id
+                ),
+                (0.45, 0.25, 0.70, 1),
+                52,
+            )
+            edit.size_hint_x = 0.28
+
+            row.add_widget(info)
+            row.add_widget(edit)
+            self.schedules_list.add_widget(row)
+            self.schedules_list.height += dp(76)
+
+    def open_new_schedule(self):
+        self.current_edit_schedule_id = None
+        self.schedule_name_button.text = "Schedule name"
+        self.schedule_start_button.text = "Start: 08:00"
+        self.schedule_end_button.text = "End: 18:00"
+        self.schedule_enabled_spinner.text = "enabled"
+
+        for index, button in enumerate(self.weekday_buttons):
+            selected = index < 5
+            button.selected = selected
+            button.background_color = (
+                (0.10, 0.45, 0.80, 1)
+                if selected
+                else (0.22, 0.22, 0.28, 1)
+            )
+
+        self.schedule_editor_status_label.text = ""
+        self.sm.current = "schedule_editor"
+
+    def open_schedule_editor(self, schedule_id):
+        self.current_edit_schedule_id = schedule_id
+        schedule = self.database.get_schedule(schedule_id)
+
+        if not schedule:
+            return
+
+        self.schedule_name_button.text = schedule["name"]
+        self.schedule_start_button.text = f"Start: {schedule['start_time']}"
+        self.schedule_end_button.text = f"End: {schedule['end_time']}"
+        self.schedule_enabled_spinner.text = (
+            "enabled" if schedule["enabled"] else "disabled"
+        )
+
+        days = json.loads(schedule["days_json"])
+
+        for index, button in enumerate(self.weekday_buttons):
+            selected = index in days
+            button.selected = selected
+            button.background_color = (
+                (0.10, 0.45, 0.80, 1)
+                if selected
+                else (0.22, 0.22, 0.28, 1)
+            )
+
+        self.schedule_editor_status_label.text = ""
+        self.sm.current = "schedule_editor"
+
+    def toggle_weekday(self, button):
+        button.selected = not button.selected
+        button.background_color = (
+            (0.10, 0.45, 0.80, 1)
+            if button.selected
+            else (0.22, 0.22, 0.28, 1)
+        )
+
+    def set_schedule_name(self, value):
+        self.schedule_name_button.text = value or "Schedule name"
+        self.sm.current = "schedule_editor"
+
+    def set_schedule_start(self, value):
+        self.schedule_start_button.text = f"Start: {value}"
+        self.sm.current = "schedule_editor"
+
+    def set_schedule_end(self, value):
+        self.schedule_end_button.text = f"End: {value}"
+        self.sm.current = "schedule_editor"
+
+    def get_selected_weekdays(self):
+        return [
+            index
+            for index, button in enumerate(self.weekday_buttons)
+            if button.selected
+        ]
+
+    def save_schedule(self):
+        name = self.schedule_name_button.text
+        start = self.schedule_start_button.text.replace("Start: ", "")
+        end = self.schedule_end_button.text.replace("End: ", "")
+        enabled = self.schedule_enabled_spinner.text == "enabled"
+        days = self.get_selected_weekdays()
+
+        if self.current_edit_schedule_id is None:
+            result = self.controller.create_schedule(
+                actor_uid=self.controller.admin_uid,
+                name=name,
+                days=days,
+                start_time=start,
+                end_time=end,
+                enabled=enabled,
+            )
+        else:
+            result = self.controller.update_schedule(
+                schedule_id=self.current_edit_schedule_id,
+                actor_uid=self.controller.admin_uid,
+                name=name,
+                days=days,
+                start_time=start,
+                end_time=end,
+                enabled=enabled,
+            )
+
+        self.schedule_editor_status_label.text = result["message"]
+
+        if result["ok"]:
+            self.refresh_schedules()
+            self.refresh_user_schedule_choices()
+            self.refresh_schedule_spinner(self.enroll_schedule_spinner)
+            self.back_to_schedules()
+
+    def confirm_delete_schedule(self):
+        if self.current_edit_schedule_id is None:
+            return
+
+        schedule = self.database.get_schedule(self.current_edit_schedule_id)
+        if not schedule:
+            return
+
+        self.open_confirm(
+            f"Delete schedule\n{schedule['name']}?",
+            self.delete_schedule_confirmed,
+        )
+
+    def delete_schedule_confirmed(self):
+        result = self.controller.delete_schedule(
+            self.current_edit_schedule_id,
+            self.controller.admin_uid,
+        )
+
+        if result["ok"]:
+            self.current_edit_schedule_id = None
+            self.refresh_schedules()
+            self.refresh_user_schedule_choices()
+            self.back_to_schedules()
+        else:
+            self.schedule_editor_status_label.text = result["message"]
+
+    # ---------------- Logs ----------------
+
+    def refresh_logs(self):
+        self.logs_list.clear_widgets()
+        self.logs_list.height = dp(1)
+
+        rows = self.database.list_logs(80)
+
+        if not rows:
+            self.logs_list.add_widget(
+                message_label("No events logged yet.")
+            )
+            return
+
+        for row in rows:
+            timestamp = row["created_at"][11:19]
+            uid = row["uid"] or "-"
+            result = row["result"] or "-"
+            reason = row["reason"] or "-"
+
+            label = Label(
+                text=f"{timestamp} | {uid}\n{result}: {reason}",
+                font_size="14sp",
+                color=(0.93, 0.93, 0.93, 1),
+                halign="left",
+                valign="middle",
+                size_hint_y=None,
+                height=dp(58),
+            )
+            label.bind(
+                width=lambda instance, value: setattr(
+                    instance, "text_size", (value, None)
+                )
+            )
+
+            self.logs_list.add_widget(label)
+            self.logs_list.height += dp(64)
+
+    # ---------------- Keyboard ----------------
+
+    def open_keyboard(self, callback, initial_text="", numeric=False):
+        self.keyboard_callback = callback
+        self.keyboard_numeric = numeric
+        self.keyboard_value = initial_text or ""
+        self.keyboard_display.text = self.keyboard_value
+        self.build_keyboard_keys()
+        self.sm.current = "keyboard"
+
+    def build_keyboard_keys(self):
+        self.keyboard_grid.clear_widgets()
+
+        if self.keyboard_numeric:
+            keys = [
+                "1", "2", "3", "4", "5", "6",
+                "7", "8", "9", "0", "-", ".",
+            ]
+        else:
+            keys = [
+                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+                "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X",
+                "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+                "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v",
+                "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7",
+                "8", "9", "-", "_", ".", ",", ":", "/", "@",
+            ]
+
+        for key in keys:
+            button = Button(
+                text=key,
+                font_size="16sp",
+                background_normal="",
+                background_color=(0.15, 0.22, 0.38, 1),
+            )
+            button.bind(
+                on_release=lambda instance, k=key: self.keyboard_press(k)
+            )
+            self.keyboard_grid.add_widget(button)
+
+    def keyboard_press(self, value):
+        self.keyboard_value += value
+        self.keyboard_display.text = self.keyboard_value
+
+    def keyboard_backspace(self):
+        self.keyboard_value = self.keyboard_value[:-1]
+        self.keyboard_display.text = self.keyboard_value
+
+    def keyboard_clear(self):
+        self.keyboard_value = ""
+        self.keyboard_display.text = ""
+
+    def keyboard_done(self):
+        callback = self.keyboard_callback
+        value = self.keyboard_value
+        self.keyboard_callback = None
+        self.sm.current = "user_editor"
+
+        if callback:
+            callback(value)
+
+    # ---------------- Date/time ----------------
+
+    def open_datetime(self, callback, initial_value=""):
+        self.datetime_callback = callback
+
+        if initial_value and initial_value != "Not set":
+            try:
+                value = datetime.fromisoformat(initial_value)
+                self.year_spinner.text = str(value.year)
+                self.month_spinner.text = str(value.month)
+                self.day_spinner.text = str(value.day)
+                self.hour_spinner.text = f"{value.hour:02d}"
+                self.minute_spinner.text = f"{value.minute:02d}"
+            except ValueError:
+                pass
+
+        self.datetime_title.text = "SELECT DATE / TIME"
+        self.sm.current = "datetime"
+
+    def open_time_picker(self, callback, initial_value="08:00"):
+        self.datetime_callback = callback
+
+        try:
+            hour, minute = initial_value.split(":")
+            self.hour_spinner.text = hour.zfill(2)
+            self.minute_spinner.text = minute.zfill(2)
+        except ValueError:
+            self.hour_spinner.text = "08"
+            self.minute_spinner.text = "00"
+
+        self.datetime_title.text = "SELECT TIME"
+        self.sm.current = "datetime"
+
+    def datetime_clear(self):
+        callback = self.datetime_callback
+        self.datetime_callback = None
+        self.sm.current = "user_editor"
+
+        if callback:
+            callback(None)
+
+    def datetime_done(self):
+        callback = self.datetime_callback
+        self.datetime_callback = None
+
+        try:
+            value = datetime(
+                int(self.year_spinner.text),
+                int(self.month_spinner.text),
+                int(self.day_spinner.text),
+                int(self.hour_spinner.text),
+                int(self.minute_spinner.text),
+                tzinfo=timezone.utc,
+            )
+            result = value.isoformat()
+        except ValueError:
+            result = None
+
+        self.datetime_title.text = "SELECT DATE / TIME"
+        self.sm.current = "user_editor"
+
+        if callback:
+            callback(result)
+
+    # ---------------- Confirmation ----------------
+
+    def open_confirm(self, message, callback):
+        self.confirm_message.text = message
+        self.confirm_callback = callback
+        self.sm.current = "confirm"
+
+    def confirm_cancel(self):
+        self.confirm_callback = None
+        self.sm.current = "user_editor"
+
+    def confirm_yes(self):
+        callback = self.confirm_callback
+        self.confirm_callback = None
+
+        if callback:
+            callback()
+
+    # ---------------- Helpers ----------------
+
+    def refresh_user_schedule_choices(self):
+        schedules = self.database.list_schedules()
+        values = ["No schedule"] + [s["name"] for s in schedules]
+        self.user_schedule_spinner.values = values
+
+    def refresh_schedule_spinner(self, spinner):
+        schedules = self.database.list_schedules()
+        spinner.values = ["No schedule"] + [s["name"] for s in schedules]
+
+        if spinner.text not in spinner.values:
+            spinner.text = "No schedule"
+
+    # ---------------- Simulation ----------------
+
+    def simulate_card(self):
+        if not self.simulation_mode:
+            return
+
+        uid = self.sim_uid_input.text.strip()
+
+        if not uid:
+            self.home_status_label.text = (
+                "Enter a UID before simulating a scan."
+            )
+            return
+
+        if self.door_controller.unlock_active:
+            self.home_status_label.text = (
+                "Card scan ignored\nDoor is currently unlocked."
+            )
+            return
+
+        self.reader.queue_uid(uid)
+
+    def simulate_door_open(self):
+        if self.simulation_mode:
+            self.door_sensor.open()
+
+    def simulate_door_close(self):
+        if self.simulation_mode:
+            self.door_sensor.close()
+
+    def simulate_exit_button(self):
+        if self.simulation_mode:
+            self.button.press()
+
+    # ---------------- Admin actions ----------------
+
+    def manual_unlock(self):
+        if self.controller.mode != "admin_menu":
+            return
+
+        self.door_controller.unlock(
+            reason="admin_manual_unlock",
+            actor_uid=self.controller.admin_uid,
+        )
+        self.admin_status_label.text = "Manual unlock active."
+
+    def manual_lock(self):
+        if self.controller.mode != "admin_menu":
+            return
+
+        self.door_controller.lock(
+            reason="admin_manual_lock",
+            actor_uid=self.controller.admin_uid,
+        )
+        self.admin_status_label.text = "Manual lock applied."
+
+    def exit_admin(self):
+        admin_uid = self.controller.admin_uid
+
+        if not admin_uid:
+            self.sm.current = "home"
+            return
+
+        result = self.controller.handle_rfid_uid(admin_uid)
+        self.handle_result(result)
+
+    # ---------------- Lifecycle ----------------
+
+    def on_stop(self):
+        if hasattr(self, "controller"):
+            self.controller.cleanup()
+
+        if hasattr(self, "button"):
+            self.button.cleanup()
+
+        if hasattr(self, "buzzer"):
+            self.buzzer.cleanup()
+
+        if hasattr(self, "reader"):
+            self.reader.cleanup()
+
+        if hasattr(self, "database"):
+            self.database.close()
 
 
-except KeyboardInterrupt:
-    print("\nStopping access-control system")
-
-
-finally:
-    # Always force the relay to the locked state before releasing GPIO.
-    app.cleanup()
-
-    button.cleanup()
-    buzzer.cleanup()
-    door_sensor.cleanup()
-    reader.cleanup()
-    database.close()
-
-    print("System safely stopped")
+if __name__ == "__main__":
+    AccessControlKivyApp().run()
