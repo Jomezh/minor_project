@@ -263,6 +263,17 @@ class AccessControlKivyApp(App):
         uid = result.get("uid", "")
         reason = result.get("reason", "")
 
+        if outcome == "admin_mode":
+            self.admin_status_label.text = (
+                "Admin authenticated\nDoor stays locked"
+            )
+            self.refresh_users()
+            self.refresh_schedules()
+            self.refresh_user_schedule_choices()
+            self.refresh_schedule_spinner(self.enroll_schedule_spinner)
+            self.sm.current = "admin"
+            return
+
         if outcome == "admin_mode_exited":
             self.admin_status_label.text = "Admin mode active."
             self.enroll_uid_label.text = ""
@@ -271,23 +282,23 @@ class AccessControlKivyApp(App):
             self.sm.current = "home"
             return
 
-        if outcome == "admin_mode_exited":
-            self.home_status_label.text = "Admin mode exited"
-            self.sm.current = "home"
-            return
-
         if outcome == "enrollment_started":
             self.enroll_uid_label.text = f"Card UID: {uid}"
-            self.enroll_name_button.text = "Cardholder name"
-            self.enroll_tier_spinner.text = "employee"
             self.enroll_message_label.text = ""
-            self.refresh_schedule_spinner(self.enroll_schedule_spinner)
+
+            # Only reset the form if the person isn't already filling it in.
+            if self.sm.current not in ("enroll", "keyboard"):
+                self.enroll_name_button.text = "Cardholder name"
+                self.enroll_tier_spinner.text = "employee"
+                self.refresh_schedule_spinner(self.enroll_schedule_spinner)
+
             self.sm.current = "enroll"
             return
 
         if outcome == "enrollment_pending":
             self.enroll_message_label.text = reason
             return
+
         if outcome == "admin_card_lookup":
             self.admin_status_label.text = reason
             self.sm.current = "admin"
