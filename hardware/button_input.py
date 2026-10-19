@@ -1,4 +1,5 @@
 import traceback
+import time
 import RPi.GPIO as GPIO
 
 from config import BUTTON_PIN
@@ -20,7 +21,7 @@ class ButtonInput:
             BUTTON_PIN,
             GPIO.FALLING,
             callback=self._pressed_callback,
-            bouncetime=250,
+            bouncetime=300,
         )
 
         def _pressed_callback(self, channel):
