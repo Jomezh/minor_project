@@ -1,3 +1,4 @@
+import traceback    
 import time
 import json
 import threading
@@ -96,44 +97,44 @@ class AccessControlKivyApp(App):
         self.exit_requested.set()
 
     def system_tick(self, dt):
-        self.controller.update()
-        self.update_home_state()
-        self.process_exit_request()
+        try:
+            self.controller.update()
+            self.update_home_state()
+            self.process_exit_request()
 
-        if self.door_controller.unlock_active:
-            return
+            if self.door_controller.unlock_active:
+                return
 
-        uid = self.reader.read_uid()
+            uid = self.reader.read_uid()
 
-        if uid is None:
-            self.consecutive_misses += 1
+            if uid is None:
+                self.consecutive_misses += 1
 
-            if self.consecutive_misses >= self.miss_threshold:
-                self.card_ready = True
+                if self.consecutive_misses >= self.miss_threshold:
+                    self.card_ready = True
+                    self.last_card_uid = None
 
-            return
+                return
 
-        self.consecutive_misses = 0
+            self.consecutive_misses = 0
 
-        if not self.card_ready:
-            return
+            normalized_uid = self.database.normalize_uid(uid)
 
-        self.card_ready = False
+            if normalized_uid == self.last_card_uid:
+                return
 
-        normalized_uid = self.database.normalize_uid(uid)
-        current_time = time.monotonic()
+            if not self.card_ready:
+                return
 
-        if (
-            normalized_uid == self.last_card_uid
-            and current_time - self.last_card_time < self.same_card_cooldown
-        ):
-            return
+            self.card_ready = False
+            self.last_card_uid = normalized_uid
 
-        self.last_card_uid = normalized_uid
-        self.last_card_time = current_time
+            result = self.controller.handle_rfid_uid(normalized_uid)
+            self.handle_result(result)
 
-        result = self.controller.handle_rfid_uid(normalized_uid)
-        self.handle_result(result)
+        except Exception:
+            print("ERROR IN SYSTEM TICK:")
+            traceback.print_exc()
 
     def process_exit_request(self):
         if not self.exit_requested.is_set():
