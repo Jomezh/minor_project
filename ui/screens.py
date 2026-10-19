@@ -89,7 +89,7 @@ def build_ui(app):
 
 def build_home_screen(app):
     screen = HomeScreen(name="home")
-    root = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(10))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.06, 0.08, 0.12)
 
     root.add_widget(title_label("ACCESS CONTROL SYSTEM", size=28))
@@ -124,7 +124,7 @@ def build_home_screen(app):
             16,
         ))
 
-        uid_row = BoxLayout(spacing=dp(8), size_hint_y=None, height=dp(48))
+        uid_row = BoxLayout(spacing=dp(4 if COMPACT else 8), size_hint_y=None, height=dp(48))
 
         app.sim_uid_input = TextInput = __import__(
             "kivy.uix.textinput", fromlist=["TextInput"]
@@ -140,7 +140,7 @@ def build_home_screen(app):
         root.add_widget(uid_row)
 
         controls = GridLayout(
-            cols=3, spacing=dp(8), size_hint_y=None, height=dp(52)
+            cols=3, spacing=dp(4 if COMPACT else 8), size_hint_y=None, height=dp(52)
         )
         controls.add_widget(action_button(
             "DOOR OPEN", app.simulate_door_open, (0.70, 0.48, 0.12, 1), 52
@@ -162,7 +162,7 @@ def build_home_screen(app):
 
 def build_admin_screen(app):
     screen = AdminScreen(name="admin")
-    root = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(10))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.10, 0.07, 0.12)
 
     root.add_widget(title_label("ADMIN DASHBOARD", (1, 0.78, 0.25, 1), 26))
@@ -171,7 +171,7 @@ def build_admin_screen(app):
     app.admin_status_label.size_hint_y = 0.18
     root.add_widget(app.admin_status_label)
 
-    grid = GridLayout(cols=2, spacing=dp(10), size_hint_y=1)
+    grid = GridLayout(cols=2, spacing=dp(4 if COMPACT else 8), size_hint_y=1)
 
     grid.add_widget(action_button(
         "USERS", app.open_users, (0.12, 0.35, 0.70, 1), 70
@@ -207,7 +207,7 @@ def build_admin_screen(app):
 
 def build_users_screen(app):
     screen = UsersScreen(name="users")
-    root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.06, 0.08, 0.12)
 
     root.add_widget(back_bar("USERS", app.back_to_admin))
@@ -229,7 +229,7 @@ def build_users_screen(app):
 
 def build_user_editor_screen(app):
     screen = UserEditorScreen(name="user_editor")
-    root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.07, 0.09, 0.14)
 
     root.add_widget(back_bar("EDIT USER", app.back_to_users))
@@ -241,9 +241,9 @@ def build_user_editor_screen(app):
 
     form = BoxLayout(
         orientation="vertical",
-        spacing=dp(8),
+        spacing=dp(4 if COMPACT else 8),
         size_hint_y=None,
-        height=dp(560),
+        height=dp(320 if COMPACT else 560),
     )
 
     app.user_name_button = action_button(
@@ -337,7 +337,7 @@ def build_user_editor_screen(app):
 
 def build_enroll_screen(app):
     screen = EnrollScreen(name="enroll")
-    root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.05, 0.10, 0.10)
 
     root.add_widget(back_bar("ENROLL CARD", app.cancel_enrollment))
@@ -385,7 +385,7 @@ def build_enroll_screen(app):
     app.enroll_message_label.size_hint_y = 1
     root.add_widget(app.enroll_message_label)
 
-    buttons = BoxLayout(spacing=dp(8), size_hint_y=None, height=dp(52))
+    buttons = BoxLayout(spacing=dp(4 if COMPACT else 8), size_hint_y=None, height=dp(52))
     buttons.add_widget(action_button(
         "SAVE", app.save_enrollment, (0.10, 0.55, 0.25, 1), 52
     ))
@@ -403,7 +403,7 @@ def build_enroll_screen(app):
 
 def build_schedules_screen(app):
     screen = SchedulesScreen(name="schedules")
-    root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.08, 0.06, 0.12)
 
     root.add_widget(back_bar("SCHEDULES", app.back_to_admin))
@@ -429,7 +429,7 @@ def build_schedules_screen(app):
 
 def build_schedule_editor_screen(app):
     screen = ScheduleEditorScreen(name="schedule_editor")
-    root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.09, 0.07, 0.14)
 
     root.add_widget(back_bar("EDIT SCHEDULE", app.back_to_schedules))
@@ -441,9 +441,9 @@ def build_schedule_editor_screen(app):
 
     form = BoxLayout(
         orientation="vertical",
-        spacing=dp(8),
+        spacing=dp(4 if COMPACT else 8),
         size_hint_y=None,
-        height=dp(560),
+        height=dp(320 if COMPACT else 560),
     )
 
     app.schedule_name_button = action_button(
@@ -528,7 +528,7 @@ def build_schedule_editor_screen(app):
 
 def build_logs_screen(app):
     screen = LogsScreen(name="logs")
-    root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.06, 0.08, 0.12)
 
     root.add_widget(back_bar("ACCESS LOGS", app.back_to_admin))
@@ -550,7 +550,7 @@ def build_logs_screen(app):
 
 def build_keyboard_screen(app):
     screen = KeyboardScreen(name="keyboard")
-    root = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(8))
+    root = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.06, 0.08, 0.12)
 
     app.keyboard_display = Label(
@@ -565,7 +565,7 @@ def build_keyboard_screen(app):
     app.keyboard_grid = GridLayout(cols=6, spacing=dp(5), size_hint_y=1)
     root.add_widget(app.keyboard_grid)
 
-    buttons = BoxLayout(spacing=dp(8), size_hint_y=None, height=dp(52))
+    buttons = BoxLayout(spacing=dp(4 if COMPACT else 8), size_hint_y=None, height=dp(52))
     buttons.add_widget(action_button(
         "SPACE", lambda: app.keyboard_press(" "), (0.20, 0.25, 0.40, 1), 52
     ))
@@ -589,13 +589,13 @@ def build_keyboard_screen(app):
 
 def build_datetime_screen(app):
     screen = DateTimeScreen(name="datetime")
-    root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
     add_background(root, 0.06, 0.08, 0.12)
 
     app.datetime_title = title_label("SELECT DATE / TIME")
     root.add_widget(app.datetime_title)
 
-    grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=1)
+    grid = GridLayout(cols=2, spacing=dp(4 if COMPACT else 8), size_hint_y=1)
 
     now = datetime.now()
 
@@ -639,7 +639,7 @@ def build_datetime_screen(app):
 
     root.add_widget(grid)
 
-    buttons = BoxLayout(spacing=dp(8), size_hint_y=None, height=dp(52))
+    buttons = BoxLayout(spacing=dp(4 if COMPACT else 8), size_hint_y=None, height=dp(52))
     buttons.add_widget(action_button(
         "CLEAR", app.datetime_clear, (0.60, 0.20, 0.20, 1), 52
     ))
@@ -672,7 +672,7 @@ def build_confirm_screen(app):
     )
     root.add_widget(app.confirm_message)
 
-    buttons = BoxLayout(spacing=dp(10), size_hint_y=None, height=dp(60))
+    buttons = BoxLayout(spacing=dp(4 if COMPACT else 8), size_hint_y=None, height=dp(60))
     buttons.add_widget(action_button(
         "CANCEL", app.confirm_cancel, (0.30, 0.30, 0.36, 1), 60
     ))

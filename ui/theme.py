@@ -2,6 +2,10 @@ from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from config import SIMULATION_MODE
+
+COMPACT = not SIMULATION_MODE
+SCALE = 0.55 if COMPACT else 1.0
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -9,11 +13,11 @@ WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 def title_label(text, color=(0.25, 0.75, 1, 1), size=26):
     return Label(
         text=text,
-        font_size=f"{size}sp",
+        font_size=f"{size * SCALE:.0f}sp",
         bold=True,
         color=color,
         size_hint_y=None,
-        height=dp(44),
+        height=dp(44 * SCALE),
     )
 
 
@@ -38,11 +42,11 @@ def message_label(text="", color=(0.95, 0.95, 0.95, 1)):
 def action_button(text, callback, color=(0.12, 0.45, 0.80, 1), height=52):
     button = Button(
         text=text,
-        font_size="17sp",
+        font_size=f"{17 * SCALE:.0f}sp",
         background_normal="",
         background_color=color,
         size_hint_y=None,
-        height=dp(height),
+        height=dp(height * SCALE),
     )
     button.bind(on_release=lambda instance: callback())
     return button

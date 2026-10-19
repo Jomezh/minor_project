@@ -4,11 +4,18 @@ from datetime import datetime, timezone
 
 from kivy.config import Config
 
-Config.set("graphics", "width", "900")
-Config.set("graphics", "height", "600")
-Config.set("graphics", "resizable", "1")
-Config.set("kivy", "exit_on_escape", "0")
+from config import SIMULATION_MODE
 
+if SIMULATION_MODE:
+    Config.set("graphics", "width", "900")
+    Config.set("graphics", "height", "600")
+    Config.set("graphics", "resizable", "1")
+else:
+    Config.set("graphics", "width", "240")
+    Config.set("graphics", "height", "320")
+    Config.set("graphics", "resizable", "0")
+
+Config.set("kivy", "exit_on_escape", "0")
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.metrics import dp
