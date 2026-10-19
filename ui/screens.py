@@ -594,33 +594,85 @@ def build_logs_screen(app):
 
 def build_keyboard_screen(app):
     screen = KeyboardScreen(name="keyboard")
-    root = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(4 if COMPACT else 8))
+    root = BoxLayout(orientation="vertical", padding=dp(4), spacing=dp(3))
     add_background(root, 0.06, 0.08, 0.12)
 
+    # Text being typed (long text scrolls off the left edge).
     app.keyboard_display = Label(
         text="",
-        font_size="20sp",
+        font_size="16sp",
         color=(0.95, 0.95, 0.95, 1),
+        halign="left",
+        valign="middle",
+        shorten=True,
+        shorten_from="left",
         size_hint_y=None,
-        height=dp(48),
+        height=dp(34),
+    )
+    app.keyboard_display.bind(
+        size=lambda instance, value: setattr(instance, "text_size", value)
     )
     root.add_widget(app.keyboard_display)
 
-    app.keyboard_grid = GridLayout(cols=6, spacing=dp(5), size_hint_y=1)
+    # Page switcher:  [ < ]   ABC (1/3)   [ > ]
+    nav = BoxLayout(spacing=dp(3), size_hint_y=None, height=dp(36))
+
+    prev_button = Button(
+        text="<",
+        font_size="22sp",
+        bold=True,
+        background_normal="",
+        background_color=(0.25, 0.35, 0.60, 1),
+        size_hint_x=0.25,
+    )
+    prev_button.bind(on_release=lambda instance: app.keyboard_prev_page())
+
+    app.keyboard_page_label = Label(
+        text="",
+        font_size="14sp",
+        color=(0.70, 0.80, 0.95, 1),
+    )
+
+    next_button = Button(
+        text=">",
+        font_size="22sp",
+        bold=True,
+        background_normal="",
+        background_color=(0.25, 0.35, 0.60, 1),
+        size_hint_x=0.25,
+    )
+    next_button.bind(on_release=lambda instance: app.keyboard_next_page())
+
+    nav.add_widget(prev_button)
+    nav.add_widget(app.keyboard_page_label)
+    nav.add_widget(next_button)
+    root.add_widget(nav)
+
+    # Keys for the current page (filled in by build_keyboard_keys).
+    app.keyboard_grid = GridLayout(
+        cols=7,
+        rows=4,
+        spacing=dp(3),
+        size_hint_y=1,
+    )
     root.add_widget(app.keyboard_grid)
 
-    buttons = BoxLayout(spacing=dp(4 if COMPACT else 8), size_hint_y=None, height=dp(52))
+    buttons = BoxLayout(
+        spacing=dp(3),
+        size_hint_y=None,
+        height=dp(44),
+    )
     buttons.add_widget(action_button(
-        "SPACE", lambda: app.keyboard_press(" "), (0.20, 0.25, 0.40, 1), 52
+        "SPACE", lambda: app.keyboard_press(" "), (0.20, 0.25, 0.40, 1), 44
     ))
     buttons.add_widget(action_button(
-        "BACK", app.keyboard_backspace, (0.55, 0.35, 0.10, 1), 52
+        "BACK", app.keyboard_backspace, (0.55, 0.35, 0.10, 1), 44
     ))
     buttons.add_widget(action_button(
-        "CLEAR", app.keyboard_clear, (0.60, 0.20, 0.20, 1), 52
+        "CLEAR", app.keyboard_clear, (0.60, 0.20, 0.20, 1), 44
     ))
     buttons.add_widget(action_button(
-        "DONE", app.keyboard_done, (0.10, 0.55, 0.25, 1), 52
+        "DONE", app.keyboard_done, (0.10, 0.55, 0.25, 1), 44
     ))
     root.add_widget(buttons)
 

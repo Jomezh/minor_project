@@ -36,6 +36,16 @@ from hardware.hardware_factory import create_hardware
 from ui import build_ui
 from ui.theme import WEEKDAYS, action_button, message_label
 
+# On-screen keyboard pages: (page name, keys). Each page holds up to 28 keys.
+KEYBOARD_PAGES_TEXT = [
+    ("ABC", list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")),
+    ("abc", list("abcdefghijklmnopqrstuvwxyz")),
+    ("123", list("0123456789-_.,:/@")),
+]
+KEYBOARD_PAGES_NUMERIC = [
+    ("123", list("0123456789-.")),
+]
+
 class ReaderPoller(threading.Thread):
     def __init__(self, reader, interval=0.1):
         super().__init__(daemon=True)
@@ -796,31 +806,30 @@ class AccessControlKivyApp(App):
         self.keyboard_numeric = numeric
         self.keyboard_value = initial_text or ""
         self.keyboard_display.text = self.keyboard_value
+        self.keyboard_page = 0
         self.build_keyboard_keys()
         self.sm.current = "keyboard"
+
+    def keyboard_pages(self):
+        if self.keyboard_numeric:
+            return KEYBOARD_PAGES_NUMERIC
+        return KEYBOARD_PAGES_TEXT
 
     def build_keyboard_keys(self):
         self.keyboard_grid.clear_widgets()
 
-        if self.keyboard_numeric:
-            keys = [
-                "1", "2", "3", "4", "5", "6",
-                "7", "8", "9", "0", "-", ".",
-            ]
-        else:
-            keys = [
-                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
-                "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X",
-                "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
-                "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v",
-                "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7",
-                "8", "9", "-", "_", ".", ",", ":", "/", "@",
-            ]
+        pages = self.keyboard_pages()
+        self.keyboard_page %= len(pages)
+        name, keys = pages[self.keyboard_page]
+
+        self.keyboard_page_label.text = (
+            f"{name}  ({self.keyboard_page + 1}/{len(pages)})"
+        )
 
         for key in keys:
             button = Button(
                 text=key,
-                font_size="16sp",
+                font_size="18sp",
                 background_normal="",
                 background_color=(0.15, 0.22, 0.38, 1),
             )
@@ -828,6 +837,14 @@ class AccessControlKivyApp(App):
                 on_release=lambda instance, k=key: self.keyboard_press(k)
             )
             self.keyboard_grid.add_widget(button)
+
+    def keyboard_next_page(self):
+        self.keyboard_page += 1
+        self.build_keyboard_keys()
+
+    def keyboard_prev_page(self):
+        self.keyboard_page -= 1
+        self.build_keyboard_keys()
 
     def keyboard_press(self, value):
         self.keyboard_value += value
