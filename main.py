@@ -356,6 +356,7 @@ class AccessControlKivyApp(App):
             self.users_list.add_widget(row)
 
     def open_user_editor(self, card_id):
+        print(f"EDIT: open_user_editor({card_id}) start")    
         self.current_edit_card_id = card_id
         card = self.database.get_card_by_id(card_id)
 
@@ -388,6 +389,7 @@ class AccessControlKivyApp(App):
 
         self.user_editor_status_label.text = ""
         self.sm.current = "user_editor"
+        print("EDIT: switched to user_editor")
 
     def set_user_name(self, value):
         self.user_name_button.text = f"Name: {value}"
@@ -492,12 +494,14 @@ class AccessControlKivyApp(App):
     # ---------------- Enrollment ----------------
 
     def open_enroll(self):
+        print("ENROLL: open_enroll start")
         self.enroll_uid_label.text = "Scan an unknown RFID card."
         self.enroll_name_button.text = "Cardholder name"
         self.enroll_tier_spinner.text = "employee"
         self.enroll_message_label.text = ""
         self.refresh_schedule_spinner(self.enroll_schedule_spinner)
         self.sm.current = "enroll"
+        print("ENROLL: switched to enroll")
 
     def set_enroll_name(self, value):
         self.enroll_name_button.text = value or "Cardholder name"
