@@ -12,6 +12,7 @@ from kivy.uix.spinner import Spinner
 
 from config import Tier
 from ui.theme import (
+    COMPACT,
     WEEKDAYS,
     action_button,
     add_background,
