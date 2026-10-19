@@ -155,6 +155,11 @@ class AccessControlKivyApp(App):
 
         self.sm = build_ui(self)
 
+        from kivy.core.window import Window
+        Window.bind(
+            on_touch_down=lambda w, t: print(f"TOUCH x={t.x:.0f} y={t.y:.0f}")
+        )
+        
         Clock.schedule_interval(self.system_tick, 0.05)
         return self.sm
 
@@ -268,8 +273,8 @@ class AccessControlKivyApp(App):
             return
 
         if outcome == "enrollment_pending":
+            self.enroll_message_label.text = reason
             return
-
         if outcome == "admin_card_lookup":
             self.admin_status_label.text = reason
             self.sm.current = "admin"

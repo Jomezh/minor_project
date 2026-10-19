@@ -44,6 +44,10 @@ class AppController:
             }
 
         if self.mode == "enrollment":
+            if card and card["tier"] == Tier.ADMIN.value and card["active"]:
+                self.cancel_enrollment()
+                return self.exit_admin_mode(uid)
+
             return {
                 "result": "enrollment_pending",
                 "uid": uid,
