@@ -1,3 +1,4 @@
+import time
 import json
 import threading
 from datetime import datetime, timezone
@@ -80,6 +81,10 @@ class AccessControlKivyApp(App):
         self.datetime_callback = None
         self.confirm_callback = None
 
+        self.last_card_uid = None
+        self.last_card_time = 0.0
+        self.same_card_cooldown = 3.0
+
         self.sm = build_ui(self)
 
         Clock.schedule_interval(self.system_tick, 0.05)
@@ -116,6 +121,17 @@ class AccessControlKivyApp(App):
         self.card_ready = False
 
         normalized_uid = self.database.normalize_uid(uid)
+        current_time = time.monotonic()
+
+        if (
+            normalized_uid == self.last_card_uid
+            and current_time - self.last_card_time < self.same_card_cooldown
+        ):
+            return
+
+        self.last_card_uid = normalized_uid
+        self.last_card_time = current_time
+
         result = self.controller.handle_rfid_uid(normalized_uid)
         self.handle_result(result)
 
@@ -482,21 +498,25 @@ class AccessControlKivyApp(App):
 
     def refresh_schedules(self):
         self.schedules_list.clear_widgets()
-        self.schedules_list.height = dp(1)
 
         schedules = self.database.list_schedules()
 
         if not schedules:
-            self.schedules_list.add_widget(
-                message_label("No schedules found.")
-            )
+            empty = message_label("No schedules found.")
+            empty.size_hint_y = None
+            empty.height = dp(40)
+            self.schedules_list.add_widget(empty)
             return
 
         for schedule in schedules:
             days = json.loads(schedule["days_json"])
             day_text = ", ".join(WEEKDAYS[d] for d in days)
 
-            row = BoxLayout(spacing=dp(6), size_hint_y=None, height=dp(70))
+            row = BoxLayout(
+                spacing=dp(4),
+                size_hint_y=None,
+                height=dp(54),
+            )
 
             info = Label(
                 text=(
@@ -505,11 +525,11 @@ class AccessControlKivyApp(App):
                     f"{schedule['start_time']} - {schedule['end_time']} | "
                     f"{'ON' if schedule['enabled'] else 'OFF'}"
                 ),
-                font_size="14sp",
+                font_size="11sp",
                 halign="left",
                 valign="middle",
                 color=(0.93, 0.93, 0.93, 1),
-                size_hint_x=0.72,
+                size_hint_x=0.70,
             )
             info.bind(
                 width=lambda instance, value: setattr(
@@ -523,14 +543,13 @@ class AccessControlKivyApp(App):
                     schedule_id
                 ),
                 (0.45, 0.25, 0.70, 1),
-                52,
+                44,
             )
-            edit.size_hint_x = 0.28
+            edit.size_hint_x = 0.30
 
             row.add_widget(info)
             row.add_widget(edit)
             self.schedules_list.add_widget(row)
-            self.schedules_list.height += dp(76)
 
     def open_new_schedule(self):
         self.current_edit_schedule_id = None
@@ -672,14 +691,14 @@ class AccessControlKivyApp(App):
 
     def refresh_logs(self):
         self.logs_list.clear_widgets()
-        self.logs_list.height = dp(1)
 
-        rows = self.database.list_logs(80)
+        rows = self.database.list_logs(100)
 
         if not rows:
-            self.logs_list.add_widget(
-                message_label("No events logged yet.")
-            )
+            empty = message_label("No events logged yet.")
+            empty.size_hint_y = None
+            empty.height = dp(40)
+            self.logs_list.add_widget(empty)
             return
 
         for row in rows:
@@ -690,12 +709,12 @@ class AccessControlKivyApp(App):
 
             label = Label(
                 text=f"{timestamp} | {uid}\n{result}: {reason}",
-                font_size="14sp",
+                font_size="11sp",
                 color=(0.93, 0.93, 0.93, 1),
                 halign="left",
                 valign="middle",
                 size_hint_y=None,
-                height=dp(58),
+                height=dp(34),
             )
             label.bind(
                 width=lambda instance, value: setattr(
@@ -704,7 +723,6 @@ class AccessControlKivyApp(App):
             )
 
             self.logs_list.add_widget(label)
-            self.logs_list.height += dp(64)
 
     # ---------------- Keyboard ----------------
 

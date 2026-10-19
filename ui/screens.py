@@ -215,7 +215,7 @@ def build_users_screen(app):
 
     app.users_status_label = message_label("")
     app.users_status_label.size_hint_y = None
-    app.users_status_label.height = dp(30)
+    app.users_status_label.height = dp(28)
     root.add_widget(app.users_status_label)
 
     app.users_list = GridLayout(
@@ -225,8 +225,6 @@ def build_users_screen(app):
         size_hint_y=None,
     )
 
-    # This is the critical line: it makes the GridLayout grow
-    # automatically as user rows are added.
     app.users_list.bind(
         minimum_height=app.users_list.setter("height")
     )
@@ -420,24 +418,42 @@ def build_enroll_screen(app):
 
 def build_schedules_screen(app):
     screen = SchedulesScreen(name="schedules")
-    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
+    root = BoxLayout(orientation="vertical", padding=dp(6), spacing=dp(4))
     add_background(root, 0.08, 0.06, 0.12)
 
     root.add_widget(back_bar("SCHEDULES", app.back_to_admin))
 
     app.schedules_status_label = message_label("")
+    app.schedules_status_label.size_hint_y = None
+    app.schedules_status_label.height = dp(28)
     root.add_widget(app.schedules_status_label)
 
     app.schedules_list = GridLayout(
-        cols=1, spacing=dp(6), size_hint_y=None, height=dp(1)
+        cols=1,
+        spacing=dp(4),
+        padding=dp(2),
+        size_hint_y=None,
     )
 
-    scroll = ScrollView(do_scroll_x=False)
+    app.schedules_list.bind(
+        minimum_height=app.schedules_list.setter("height")
+    )
+
+    scroll = ScrollView(
+        do_scroll_x=False,
+        do_scroll_y=True,
+        bar_width=dp(4),
+        scroll_type=["bars", "content"],
+    )
     scroll.add_widget(app.schedules_list)
+
     root.add_widget(scroll)
 
     root.add_widget(action_button(
-        "NEW SCHEDULE", app.open_new_schedule, (0.10, 0.55, 0.25, 1), 52
+        "NEW SCHEDULE",
+        app.open_new_schedule,
+        (0.10, 0.55, 0.25, 1),
+        44,
     ))
 
     screen.add_widget(root)
@@ -545,22 +561,33 @@ def build_schedule_editor_screen(app):
 
 def build_logs_screen(app):
     screen = LogsScreen(name="logs")
-    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
+    root = BoxLayout(orientation="vertical", padding=dp(6), spacing=dp(4))
     add_background(root, 0.06, 0.08, 0.12)
 
     root.add_widget(back_bar("ACCESS LOGS", app.back_to_admin))
 
     app.logs_list = GridLayout(
-        cols=1, spacing=dp(5), size_hint_y=None, height=dp(1)
+        cols=1,
+        spacing=dp(3),
+        padding=dp(2),
+        size_hint_y=None,
     )
 
-    scroll = ScrollView(do_scroll_x=False)
-    scroll.add_widget(app.logs_list)
-    root.add_widget(scroll)
+    app.logs_list.bind(
+        minimum_height=app.logs_list.setter("height")
+    )
 
+    scroll = ScrollView(
+        do_scroll_x=False,
+        do_scroll_y=True,
+        bar_width=dp(4),
+        scroll_type=["bars", "content"],
+    )
+    scroll.add_widget(app.logs_list)
+
+    root.add_widget(scroll)
     screen.add_widget(root)
     return screen
-
 
 # ---------------------------------------------------------------- Keyboard
 
