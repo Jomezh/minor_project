@@ -24,16 +24,16 @@ class ButtonInput:
             bouncetime=300,
         )
 
-        def _pressed_callback(self, channel):
-            try:
-                time.sleep(0.05)
+    def _pressed_callback(self, channel):
+        try:
+            time.sleep(0.05)
 
-                if GPIO.input(BUTTON_PIN) == GPIO.LOW:
-                    self.on_pressed()
+            if GPIO.input(BUTTON_PIN) == GPIO.LOW:
+                self.on_pressed()
 
-            except Exception:
-                print("ERROR IN BUTTON CALLBACK:")
-                traceback.print_exc()
+        except Exception:
+            print("ERROR IN BUTTON CALLBACK:")
+            traceback.print_exc()
 
     def cleanup(self):
         GPIO.remove_event_detect(BUTTON_PIN)
