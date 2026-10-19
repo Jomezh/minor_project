@@ -231,29 +231,34 @@ class AccessControlKivyApp(App):
 
     def refresh_users(self):
         self.users_list.clear_widgets()
-        self.users_list.height = dp(1)
 
         cards = self.database.list_cards()
 
         if not cards:
-            self.users_list.add_widget(message_label("No users enrolled."))
+            empty = message_label("No users enrolled.")
+            empty.size_hint_y = None
+            empty.height = dp(40)
+            self.users_list.add_widget(empty)
             return
 
         for card in cards:
-            row = BoxLayout(spacing=dp(6), size_hint_y=None, height=dp(62))
+            row = BoxLayout(
+                spacing=dp(4),
+                size_hint_y=None,
+                height=dp(46),
+            )
 
             info = Label(
                 text=(
                     f"{card['label']}\n"
                     f"{card['tier'].upper()} | "
-                    f"{'ACTIVE' if card['active'] else 'DISABLED'}\n"
-                    f"{card['uid']}"
+                    f"{'ACTIVE' if card['active'] else 'DISABLED'}"
                 ),
-                font_size="14sp",
+                font_size="12sp",
                 halign="left",
                 valign="middle",
                 color=(0.93, 0.93, 0.93, 1),
-                size_hint_x=0.72,
+                size_hint_x=0.70,
             )
             info.bind(
                 width=lambda instance, value: setattr(
@@ -265,14 +270,13 @@ class AccessControlKivyApp(App):
                 "EDIT",
                 lambda card_id=card["id"]: self.open_user_editor(card_id),
                 (0.12, 0.45, 0.80, 1),
-                52,
+                40,
             )
-            edit.size_hint_x = 0.28
+            edit.size_hint_x = 0.30
 
             row.add_widget(info)
             row.add_widget(edit)
             self.users_list.add_widget(row)
-            self.users_list.height += dp(68)
 
     def open_user_editor(self, card_id):
         self.current_edit_card_id = card_id

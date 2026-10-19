@@ -208,22 +208,38 @@ def build_admin_screen(app):
 
 def build_users_screen(app):
     screen = UsersScreen(name="users")
-    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
+    root = BoxLayout(orientation="vertical", padding=dp(6), spacing=dp(4))
     add_background(root, 0.06, 0.08, 0.12)
 
     root.add_widget(back_bar("USERS", app.back_to_admin))
 
     app.users_status_label = message_label("")
+    app.users_status_label.size_hint_y = None
+    app.users_status_label.height = dp(30)
     root.add_widget(app.users_status_label)
 
     app.users_list = GridLayout(
-        cols=1, spacing=dp(6), size_hint_y=None, height=dp(1)
+        cols=1,
+        spacing=dp(4),
+        padding=dp(2),
+        size_hint_y=None,
     )
 
-    scroll = ScrollView(do_scroll_x=False)
-    scroll.add_widget(app.users_list)
-    root.add_widget(scroll)
+    # This is the critical line: it makes the GridLayout grow
+    # automatically as user rows are added.
+    app.users_list.bind(
+        minimum_height=app.users_list.setter("height")
+    )
 
+    scroll = ScrollView(
+        do_scroll_x=False,
+        do_scroll_y=True,
+        bar_width=dp(4),
+        scroll_type=["bars", "content"],
+    )
+    scroll.add_widget(app.users_list)
+
+    root.add_widget(scroll)
     screen.add_widget(root)
     return screen
 
