@@ -177,10 +177,10 @@ class AccessControlKivyApp(App):
         self.consecutive_misses = 0
         normalized_uid = self.database.normalize_uid(uid)
 
-        print(
+        '''print(
             f"UID {normalized_uid} ready={self.card_ready} "
             f"last={self.last_card_uid} mode={self.controller.mode}"
-        )
+        )'''
 
         if normalized_uid == self.last_card_uid or not self.card_ready:
             return
