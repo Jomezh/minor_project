@@ -14,8 +14,8 @@ if SIMULATION_MODE:
     Config.set("graphics", "height", "600")
     Config.set("graphics", "resizable", "1")
 else:
-    Config.set("graphics", "width", "240")
-    Config.set("graphics", "height", "320")
+    Config.set("graphics", "width", "320")
+    Config.set("graphics", "height", "240")
     Config.set("graphics", "resizable", "0")
 
 Config.set("kivy", "exit_on_escape", "0")
@@ -160,6 +160,8 @@ class AccessControlKivyApp(App):
             on_touch_down=lambda w, t: print(f"TOUCH x={t.x:.0f} y={t.y:.0f}")
         )
         
+        print("WINDOW SIZE:", Window.size)
+        
         Clock.schedule_interval(self.system_tick, 0.05)
         return self.sm
 
@@ -249,7 +251,7 @@ class AccessControlKivyApp(App):
 
         if outcome == "admin_mode":
             self.admin_status_label.text = (
-                f"Admin authenticated\nUID: {uid}\nDoor unlocked"
+                f"Admin authenticated\nUID: {uid}\nDoor stays locked"
             )
             self.refresh_users()
             self.refresh_schedules()

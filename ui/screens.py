@@ -9,6 +9,7 @@ from kivy.uix.label import Label
 from kivy.uix.screenmanager import NoTransition, Screen, ScreenManager
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner
+from kivy.properties import ListProperty
 
 from config import Tier
 from ui.theme import (
@@ -65,6 +66,24 @@ class DateTimeScreen(Screen):
 class ConfirmScreen(Screen):
     pass
 
+class CycleButton(Button):
+    """Tap to move to the next value. Drop-in replacement for Spinner."""
+
+    values = ListProperty([])
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("background_normal", "")
+        kwargs.setdefault("background_color", (0.20, 0.30, 0.50, 1))
+        super().__init__(**kwargs)
+
+    def on_release(self):
+        if not self.values:
+            return
+        try:
+            index = self.values.index(self.text)
+        except ValueError:
+            index = -1
+        self.text = self.values[(index + 1) % len(self.values)]
 
 def build_ui(app):
     sm = ScreenManager()
@@ -352,17 +371,17 @@ def build_user_editor_screen(app):
 
 def build_enroll_screen(app):
     screen = EnrollScreen(name="enroll")
-    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
+    root = BoxLayout(orientation="vertical", padding=dp(6), spacing=dp(4))
     add_background(root, 0.05, 0.10, 0.10)
 
     root.add_widget(back_bar("ENROLL CARD", app.cancel_enrollment))
 
     app.enroll_uid_label = Label(
         text="",
-        font_size="17sp",
+        font_size="14sp",
         color=(0.95, 0.95, 0.95, 1),
         size_hint_y=None,
-        height=dp(30),
+        height=dp(22),
     )
     root.add_widget(app.enroll_uid_label)
 
@@ -373,39 +392,40 @@ def build_enroll_screen(app):
             app.enroll_name_button.text,
         ),
         (0.15, 0.25, 0.45, 1),
-        48,
+        66,
     )
     root.add_widget(app.enroll_name_button)
 
-    app.enroll_tier_spinner = Spinner(
+    # Tier and schedule side by side (tap to change).
+    pickers = BoxLayout(spacing=dp(4), size_hint_y=None, height=dp(36))
+
+    app.enroll_tier_spinner = CycleButton(
         text="employee",
         values=[tier.value for tier in Tier],
-        font_size="16sp",
-        size_hint_y=None,
-        height=dp(48),
+        font_size="14sp",
     )
     app.enroll_tier_spinner.bind(text=app.on_enroll_tier_changed)
-    root.add_widget(app.enroll_tier_spinner)
+    pickers.add_widget(app.enroll_tier_spinner)
 
-    app.enroll_schedule_spinner = Spinner(
+    app.enroll_schedule_spinner = CycleButton(
         text="No schedule",
         values=["No schedule"],
-        font_size="16sp",
-        size_hint_y=None,
-        height=dp(48),
+        font_size="14sp",
     )
-    root.add_widget(app.enroll_schedule_spinner)
+    pickers.add_widget(app.enroll_schedule_spinner)
+    root.add_widget(pickers)
 
     app.enroll_message_label = message_label("")
     app.enroll_message_label.size_hint_y = 1
+    app.enroll_message_label.font_size = "13sp"
     root.add_widget(app.enroll_message_label)
 
-    buttons = BoxLayout(spacing=dp(4 if COMPACT else 8), size_hint_y=None, height=dp(52))
+    buttons = BoxLayout(spacing=dp(4), size_hint_y=None, height=dp(40))
     buttons.add_widget(action_button(
-        "SAVE", app.save_enrollment, (0.10, 0.55, 0.25, 1), 52
+        "SAVE", app.save_enrollment, (0.10, 0.55, 0.25, 1), 72
     ))
     buttons.add_widget(action_button(
-        "CANCEL", app.cancel_enrollment, (0.65, 0.20, 0.20, 1), 52
+        "CANCEL", app.cancel_enrollment, (0.65, 0.20, 0.20, 1), 72
     ))
     root.add_widget(buttons)
 

@@ -107,12 +107,7 @@ class AppController:
             result="admin_mode",
             reason="Admin authenticated",
             actor_uid=uid,
-            door_state="unlocked",
-        )
-
-        self.door_controller.unlock(
-            reason="admin_authenticated",
-            actor_uid=uid,
+            door_state="locked",
         )
 
         return {
