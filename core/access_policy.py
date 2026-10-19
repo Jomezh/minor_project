@@ -71,7 +71,7 @@ class AccessPolicy:
                     card,
                 )
 
-        if not self._schedule_allows(card["id"], now):
+        if not self._schedule_allows(card["id"], datetime.now()):
             return AccessDecision(
                 False,
                 AccessResult.OUTSIDE_SCHEDULE,

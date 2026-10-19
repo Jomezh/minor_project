@@ -1,3 +1,4 @@
+import queue
 import traceback    
 import time
 import json
@@ -6,7 +7,7 @@ from datetime import datetime, timezone
 
 from kivy.config import Config
 
-from config import SIMULATION_MODE
+from config import SIMULATION_MODE, Tier
 
 if SIMULATION_MODE:
     Config.set("graphics", "width", "900")
@@ -34,6 +35,38 @@ from database.database import Database
 from hardware.hardware_factory import create_hardware
 from ui import build_ui
 from ui.theme import WEEKDAYS, action_button, message_label
+
+class ReaderPoller(threading.Thread):
+    def __init__(self, reader, interval=0.1):
+        super().__init__(daemon=True)
+        self.reader = reader
+        self.interval = interval
+        self.samples = queue.Queue(maxsize=50)
+        self.stop_event = threading.Event()
+
+    def run(self):
+        while not self.stop_event.is_set():
+            try:
+                uid = self.reader.read_uid()
+            except Exception:
+                traceback.print_exc()
+                uid = None
+            try:
+                self.samples.put_nowait(uid)
+            except queue.Full:
+                pass
+            time.sleep(self.interval)
+
+    def drain(self):
+        items = []
+        while True:
+            try:
+                items.append(self.samples.get_nowait())
+            except queue.Empty:
+                return items
+
+    def stop(self):
+        self.stop_event.set()
 
 class AccessControlKivyApp(App):
     simulation_mode = BooleanProperty(SIMULATION_MODE)
@@ -68,6 +101,9 @@ class AccessControlKivyApp(App):
         self.reader.initialize()
         self.relay.lock()
 
+        self.reader_poller = ReaderPoller(self.reader)
+        self.reader_poller.start()
+
         self.card_ready = True
         self.consecutive_misses = 0
         self.miss_threshold = 6
@@ -98,43 +134,41 @@ class AccessControlKivyApp(App):
 
     def system_tick(self, dt):
         try:
+            self.button.poll()
             self.controller.update()
             self.update_home_state()
             self.process_exit_request()
 
-            if self.door_controller.unlock_active:
-                return
-
-            uid = self.reader.read_uid()
-
-            if uid is None:
-                self.consecutive_misses += 1
-
-                if self.consecutive_misses >= self.miss_threshold:
-                    self.card_ready = True
-                    self.last_card_uid = None
-
-                return
-
-            self.consecutive_misses = 0
-
-            normalized_uid = self.database.normalize_uid(uid)
-
-            if normalized_uid == self.last_card_uid:
-                return
-
-            if not self.card_ready:
-                return
-
-            self.card_ready = False
-            self.last_card_uid = normalized_uid
-
-            result = self.controller.handle_rfid_uid(normalized_uid)
-            self.handle_result(result)
-
+            for uid in self.reader_poller.drain():
+                self.process_reader_sample(uid)
         except Exception:
             print("ERROR IN SYSTEM TICK:")
             traceback.print_exc()
+
+    def process_reader_sample(self, uid):
+        if uid is None:
+            self.consecutive_misses += 1
+            if self.consecutive_misses >= self.miss_threshold:
+                self.card_ready = True
+                self.last_card_uid = None
+            return
+
+        self.consecutive_misses = 0
+        normalized_uid = self.database.normalize_uid(uid)
+
+        if normalized_uid == self.last_card_uid or not self.card_ready:
+            return
+
+        # In normal mode, ignore cards while the door is unlocked.
+        # In admin/enrollment mode, cards must still be read.
+        if (self.controller.mode == "normal"
+                and self.door_controller.unlock_active):
+            return
+
+        self.card_ready = False
+        self.last_card_uid = normalized_uid
+        result = self.controller.handle_rfid_uid(normalized_uid)
+        self.handle_result(result)
 
     def process_exit_request(self):
         if not self.exit_requested.is_set():
@@ -959,6 +993,9 @@ class AccessControlKivyApp(App):
 
         if hasattr(self, "buzzer"):
             self.buzzer.cleanup()
+
+        if hasattr(self, "reader_poller"):
+            self.reader_poller.stop()
 
         if hasattr(self, "reader"):
             self.reader.cleanup()

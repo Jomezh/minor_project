@@ -92,6 +92,9 @@ class SimulatedButtonInput:
     def __init__(self, on_press=None):
         self.on_press = on_press
 
+    def poll(self):
+        pass
+
     def press(self):
         if self.on_press:
             self.on_press()
