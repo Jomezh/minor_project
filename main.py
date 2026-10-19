@@ -170,6 +170,20 @@ class AccessControlKivyApp(App):
     def on_physical_exit_button(self):
         self.exit_requested.set()
 
+    def show_home_status(self, text, seconds=4):
+        self.home_status_label.text = text
+
+        event = getattr(self, "_status_clear_event", None)
+        if event is not None:
+            event.cancel()
+
+        self._status_clear_event = Clock.schedule_once(
+            self.clear_home_status, seconds
+        )
+
+    def clear_home_status(self, dt):
+        self.home_status_label.text = "Waiting for RFID card..."
+
     def system_tick(self, dt):
         try:
             self.button.poll()
@@ -249,15 +263,12 @@ class AccessControlKivyApp(App):
         uid = result.get("uid", "")
         reason = result.get("reason", "")
 
-        if outcome == "admin_mode":
-            self.admin_status_label.text = (
-                f"Admin authenticated\nUID: {uid}\nDoor stays locked"
-            )
-            self.refresh_users()
-            self.refresh_schedules()
-            self.refresh_user_schedule_choices()
-            self.refresh_schedule_spinner(self.enroll_schedule_spinner)
-            self.sm.current = "admin"
+        if outcome == "admin_mode_exited":
+            self.admin_status_label.text = "Admin mode active."
+            self.enroll_uid_label.text = ""
+            self.enroll_name_button.text = "Cardholder name"
+            self.show_home_status("Admin mode exited", 3)
+            self.sm.current = "home"
             return
 
         if outcome == "admin_mode_exited":
@@ -283,12 +294,10 @@ class AccessControlKivyApp(App):
             return
 
         if outcome == "granted":
-            self.home_status_label.text = (
-                f"ACCESS GRANTED\n{reason}\nUID: {uid}"
-            )
+            self.show_home_status(f"ACCESS GRANTED\n{reason}", 4)
         else:
-            self.home_status_label.text = (
-                f"ACCESS DENIED\n{reason}\nUID: {uid}"
+            self.show_home_status(
+                f"ACCESS DENIED\n{outcome.replace('_', ' ')}", 4
             )
 
         self.sm.current = "home"
@@ -868,6 +877,8 @@ class AccessControlKivyApp(App):
     def keyboard_done(self):
         callback = self.keyboard_callback
         value = self.keyboard_value
+        self.keyboard_value = ""
+        self.keyboard_display.text = ""
         self.keyboard_callback = None
         self.sm.current = "user_editor"
 
