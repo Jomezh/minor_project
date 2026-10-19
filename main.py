@@ -44,17 +44,38 @@ class ReaderPoller(threading.Thread):
         self.samples = queue.Queue(maxsize=50)
         self.stop_event = threading.Event()
 
+    def check_health(self):
+        check = getattr(self.reader, "is_healthy", None)
+        if check is None:
+            return  # simulated reader has no health check
+
+        try:
+            if not check():
+                print("RFID reader lost its configuration, re-initializing")
+                self.reader.initialize()
+        except Exception:
+            traceback.print_exc()
+
     def run(self):
+        last_check = time.monotonic()
+
         while not self.stop_event.is_set():
+            now = time.monotonic()
+            if now - last_check >= 1.0:
+                last_check = now
+                self.check_health()
+
             try:
                 uid = self.reader.read_uid()
             except Exception:
                 traceback.print_exc()
                 uid = None
+
             try:
                 self.samples.put_nowait(uid)
             except queue.Full:
                 pass
+
             time.sleep(self.interval)
 
     def drain(self):
@@ -155,6 +176,11 @@ class AccessControlKivyApp(App):
 
         self.consecutive_misses = 0
         normalized_uid = self.database.normalize_uid(uid)
+
+        print(
+            f"UID {normalized_uid} ready={self.card_ready} "
+            f"last={self.last_card_uid} mode={self.controller.mode}"
+        )
 
         if normalized_uid == self.last_card_uid or not self.card_ready:
             return
@@ -996,6 +1022,7 @@ class AccessControlKivyApp(App):
 
         if hasattr(self, "reader_poller"):
             self.reader_poller.stop()
+            self.reader_poller.join(timeout=1.0)
 
         if hasattr(self, "reader"):
             self.reader.cleanup()

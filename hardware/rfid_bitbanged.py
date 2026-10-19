@@ -286,6 +286,20 @@ class RFIDBitBang:
             for value in uid_bytes
         )
 
+    def is_healthy(self):
+        """False if the chip has lost its configuration or the bus is dead."""
+        version = self.read_register(self.VERSION_REG)
+        tx_control = self.read_register(self.TX_CONTROL_REG)
+        t_mode = self.read_register(self.T_MODE_REG)
+
+        if version in (0x00, 0xFF):
+            return False
+        if (tx_control & 0x03) != 0x03:
+            return False
+        if t_mode != 0x8D:
+            return False
+        return True
+
     def version(self):
         return self.read_register(
             self.VERSION_REG
