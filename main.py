@@ -26,6 +26,7 @@ from kivy.properties import BooleanProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.base import EventLoop
 
 from config import SIMULATION_MODE
 from core.access_policy import AccessPolicy
@@ -163,12 +164,32 @@ class AccessControlKivyApp(App):
         print("WINDOW SIZE:", Window.size)
         
         Clock.schedule_interval(self.system_tick, 0.05)
+        Clock.schedule_interval(self.release_stale_touches, 0.25)
         return self.sm
 
     # ---------------- Hardware / polling ----------------
 
     def on_physical_exit_button(self):
         self.exit_requested.set()
+
+    def release_stale_touches(self, dt):
+        now = time.time()
+
+        for touch in list(EventLoop.touches):
+            last = getattr(touch, "time_update", None) or touch.time_start
+
+            if now - last > 1.0:
+                print(
+                    f"{time.strftime('%H:%M:%S')} STALE TOUCH released "
+                    f"x={touch.x:.0f} y={touch.y:.0f} "
+                    f"screen={self.sm.current}"
+                )
+                try:
+                    touch.time_end = now
+                    EventLoop.post_dispatch_input("end", touch)
+                except Exception:
+                    traceback.print_exc()
+
 
     def show_home_status(self, text, seconds=4):
         self.home_status_label.text = text
