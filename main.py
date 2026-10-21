@@ -158,6 +158,12 @@ class AccessControlKivyApp(App):
         self.sm = build_ui(self)
 
         def log_touch(kind, touch):
+            if kind == "MOVE":
+                now = time.monotonic()
+                if now - getattr(self, "_last_move_log", 0) < 0.3:
+                    return
+                self._last_move_log = now
+
             print(
                 f"{time.strftime('%H:%M:%S')} {kind} id={touch.uid} "
                 f"x={touch.x:.0f} y={touch.y:.0f} "
@@ -166,6 +172,7 @@ class AccessControlKivyApp(App):
 
         Window.bind(
             on_touch_down=lambda w, t: log_touch("DOWN", t),
+            on_touch_move=lambda w, t: log_touch("MOVE", t),
             on_touch_up=lambda w, t: log_touch("UP  ", t),
         )
         
@@ -184,12 +191,13 @@ class AccessControlKivyApp(App):
         now = time.time()
 
         for touch in list(EventLoop.touches):
-            last = getattr(touch, "time_update", None) or touch.time_start
-
-            if now - last > 1.0:
+            # Measure from when the touch began, not from its last update:
+            # a noisy panel can keep a dead touch alive with tiny moves.
+            if now - touch.time_start > 2.0:
                 print(
                     f"{time.strftime('%H:%M:%S')} STALE TOUCH released "
-                    f"x={touch.x:.0f} y={touch.y:.0f} "
+                    f"id={touch.uid} x={touch.x:.0f} y={touch.y:.0f} "
+                    f"age={now - touch.time_start:.1f}s "
                     f"screen={self.sm.current}"
                 )
                 try:
@@ -197,7 +205,6 @@ class AccessControlKivyApp(App):
                     EventLoop.post_dispatch_input("end", touch)
                 except Exception:
                     traceback.print_exc()
-
 
     def show_home_status(self, text, seconds=4):
         self.home_status_label.text = text
