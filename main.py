@@ -27,6 +27,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.base import EventLoop
+from kivy.core.window import Window
 
 from config import SIMULATION_MODE
 from core.access_policy import AccessPolicy
@@ -156,9 +157,16 @@ class AccessControlKivyApp(App):
 
         self.sm = build_ui(self)
 
-        from kivy.core.window import Window
+        def log_touch(kind, touch):
+            print(
+                f"{time.strftime('%H:%M:%S')} {kind} id={touch.uid} "
+                f"x={touch.x:.0f} y={touch.y:.0f} "
+                f"screen={self.sm.current} mode={self.controller.mode}"
+            )
+
         Window.bind(
-            on_touch_down=lambda w, t: print(f"TOUCH x={t.x:.0f} y={t.y:.0f}")
+            on_touch_down=lambda w, t: log_touch("DOWN", t),
+            on_touch_up=lambda w, t: log_touch("UP  ", t),
         )
         
         print("WINDOW SIZE:", Window.size)
