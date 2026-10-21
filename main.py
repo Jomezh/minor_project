@@ -47,7 +47,7 @@ KEYBOARD_PAGES_NUMERIC = [
 ]
 
 class ReaderPoller(threading.Thread):
-    def __init__(self, reader, interval=0.1):
+    def __init__(self, reader, interval=1.0):
         super().__init__(daemon=True)
         self.reader = reader
         self.interval = interval
