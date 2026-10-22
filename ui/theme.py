@@ -39,16 +39,20 @@ def message_label(text="", color=(0.95, 0.95, 0.95, 1)):
     return label
 
 
-def action_button(text, callback, color=(0.12, 0.45, 0.80, 1), height=52):
+def action_button(text, callback, color=(0.12, 0.45, 0.80, 1), height=52,
+                  on_release=False):
     button = Button(
         text=text,
         font_size=f"{17 * SCALE:.0f}sp",
         background_normal="",
         background_color=color,
         size_hint_y=None,
-        height=dp(height * SCALE),
+        height=dp(max(height * SCALE, 34)),
     )
-    button.bind(on_release=lambda instance: callback())
+    if on_release:
+        button.bind(on_release=lambda instance: callback())
+    else:
+        button.bind(on_press=lambda instance: callback())
     return button
 
 

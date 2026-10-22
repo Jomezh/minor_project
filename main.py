@@ -459,6 +459,7 @@ class AccessControlKivyApp(App):
                 lambda card_id=card["id"]: self.open_user_editor(card_id),
                 (0.12, 0.45, 0.80, 1),
                 40,
+                on_release=True,
             )
             edit.size_hint_x = 0.30
 
