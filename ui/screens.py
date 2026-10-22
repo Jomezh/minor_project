@@ -263,22 +263,32 @@ def build_users_screen(app):
 
 def build_user_editor_screen(app):
     screen = UserEditorScreen(name="user_editor")
-    root = BoxLayout(orientation="vertical", padding=dp(6 if COMPACT else 14), spacing=dp(4 if COMPACT else 8))
+    root = BoxLayout(orientation="vertical", padding=dp(6), spacing=dp(4))
     add_background(root, 0.07, 0.09, 0.14)
 
     root.add_widget(back_bar("EDIT USER", app.back_to_users))
 
     app.user_editor_status_label = message_label("")
+    app.user_editor_status_label.height = dp(20)
+    app.user_editor_status_label.font_size = "12sp"
     root.add_widget(app.user_editor_status_label)
 
-    scroll = ScrollView(do_scroll_x=False)
+    scroll = ScrollView(
+        do_scroll_x=False,
+        bar_width=dp(4),
+        scroll_type=["bars", "content"],
+    )
 
+    # Height follows the contents, so rows never overlap.
     form = BoxLayout(
         orientation="vertical",
-        spacing=dp(4 if COMPACT else 8),
+        spacing=dp(4),
         size_hint_y=None,
-        height=dp(320 if COMPACT else 560),
     )
+    form.bind(minimum_height=form.setter("height"))
+
+    row_h = dp(36)
+    field_color = (0.15, 0.25, 0.45, 1)
 
     app.user_name_button = action_button(
         "Name: Not set",
@@ -286,35 +296,35 @@ def build_user_editor_screen(app):
             app.set_user_name,
             app.user_name_button.text.replace("Name: ", ""),
         ),
-        (0.15, 0.25, 0.45, 1),
-        48,
+        field_color,
+        62,
     )
     form.add_widget(app.user_name_button)
 
-    app.user_tier_spinner = Spinner(
+    # Tier (left) and status (right), tap to change.
+    pickers = BoxLayout(spacing=dp(4), size_hint_y=None, height=row_h)
+
+    app.user_tier_spinner = CycleButton(
         text="employee",
         values=[tier.value for tier in Tier],
-        font_size="16sp",
-        size_hint_y=None,
-        height=dp(48),
+        font_size="14sp",
     )
-    form.add_widget(app.user_tier_spinner)
+    pickers.add_widget(app.user_tier_spinner)
 
-    app.user_status_spinner = Spinner(
+    app.user_status_spinner = CycleButton(
         text="active",
         values=["active", "disabled"],
-        font_size="16sp",
-        size_hint_y=None,
-        height=dp(48),
+        font_size="14sp",
     )
-    form.add_widget(app.user_status_spinner)
+    pickers.add_widget(app.user_status_spinner)
+    form.add_widget(pickers)
 
-    app.user_schedule_spinner = Spinner(
+    app.user_schedule_spinner = CycleButton(
         text="No schedule",
         values=["No schedule"],
-        font_size="16sp",
+        font_size="14sp",
         size_hint_y=None,
-        height=dp(48),
+        height=row_h,
     )
     form.add_widget(app.user_schedule_spinner)
 
@@ -324,8 +334,8 @@ def build_user_editor_screen(app):
             app.set_user_valid_from,
             app.user_valid_from_button.text.replace("Valid from: ", ""),
         ),
-        (0.15, 0.25, 0.45, 1),
-        48,
+        field_color,
+        62,
     )
     form.add_widget(app.user_valid_from_button)
 
@@ -335,8 +345,8 @@ def build_user_editor_screen(app):
             app.set_user_valid_until,
             app.user_valid_until_button.text.replace("Valid until: ", ""),
         ),
-        (0.15, 0.25, 0.45, 1),
-        48,
+        field_color,
+        62,
     )
     form.add_widget(app.user_valid_until_button)
 
@@ -347,22 +357,23 @@ def build_user_editor_screen(app):
             app.user_max_uses_button.text.replace("Max uses: ", ""),
             numeric=True,
         ),
-        (0.15, 0.25, 0.45, 1),
-        48,
+        field_color,
+        62,
     )
     form.add_widget(app.user_max_uses_button)
 
-    form.add_widget(action_button(
-        "SAVE USER", app.save_user, (0.10, 0.55, 0.25, 1), 52
+    actions = BoxLayout(spacing=dp(4), size_hint_y=None, height=dp(40))
+    actions.add_widget(action_button(
+        "SAVE", app.save_user, (0.10, 0.55, 0.25, 1), 72
     ))
-    form.add_widget(action_button(
-        "DELETE USER", app.confirm_delete_user, (0.70, 0.18, 0.18, 1), 52
+    actions.add_widget(action_button(
+        "DELETE", app.confirm_delete_user, (0.70, 0.18, 0.18, 1), 72
     ))
+    form.add_widget(actions)
 
     scroll.add_widget(form)
     root.add_widget(scroll)
     screen.add_widget(root)
-
     return screen
 
 

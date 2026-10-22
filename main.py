@@ -49,7 +49,7 @@ KEYBOARD_PAGES_NUMERIC = [
 ]
 RFID_ON_ENROLL = False
 class ReaderPoller(threading.Thread):
-    def __init__(self, reader, interval=0.5):
+    def __init__(self, reader, interval=0.2):
         super().__init__(daemon=True)
         self.reader = reader
         self.interval = interval
