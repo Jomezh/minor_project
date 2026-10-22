@@ -203,16 +203,7 @@ class AccessControlKivyApp(App):
     
 
     def update_reader_state(self):
-        mode = self.controller.mode
-        want = mode == "normal"
-
-        # Phase 2: also listen while the enroll screen waits for a new card.
-        if (RFID_ON_ENROLL and mode == "admin_menu"
-                and self.sm.current == "enroll"):
-            want = True
-
-        if want == self.reader_wanted:
-            return
+        want = True
 
         self.reader_wanted = want
         self.reader_poller.drain()
@@ -242,7 +233,7 @@ class AccessControlKivyApp(App):
 
     def system_tick(self, dt):
         if (self.controller.mode != "normal"
-                and time.monotonic() - self._last_touch > 60):
+                and time.monotonic() - self._last_touch > 30):
             print("Admin idle timeout, exiting admin mode")
             self._last_touch = time.monotonic()
             self.exit_admin()
