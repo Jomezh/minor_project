@@ -47,7 +47,7 @@ KEYBOARD_PAGES_TEXT = [
 KEYBOARD_PAGES_NUMERIC = [
     ("123", list("0123456789-.")),
 ]
-
+RFID_ON_ENROLL = False
 class ReaderPoller(threading.Thread):
     def __init__(self, reader, interval=0.5):
         super().__init__(daemon=True)
@@ -55,6 +55,7 @@ class ReaderPoller(threading.Thread):
         self.interval = interval
         self.samples = queue.Queue(maxsize=50)
         self.stop_event = threading.Event()
+        self.active = threading.Event()
 
     def check_health(self):
         check = getattr(self.reader, "is_healthy", None)
@@ -72,6 +73,10 @@ class ReaderPoller(threading.Thread):
         last_check = time.monotonic()
 
         while not self.stop_event.is_set():
+            if not self.active.is_set():
+                time.sleep(0.1)
+                last_check = time.monotonic()
+                continue
             now = time.monotonic()
             if now - last_check >= 1.0:
                 last_check = now
@@ -100,7 +105,12 @@ class ReaderPoller(threading.Thread):
 
     def stop(self):
         self.stop_event.set()
-
+    
+    def set_active(self, value):
+        if value:
+            self.active.set()
+        else:
+            self.active.clear()
 class AccessControlKivyApp(App):
     simulation_mode = BooleanProperty(SIMULATION_MODE)
 
@@ -136,6 +146,7 @@ class AccessControlKivyApp(App):
 
         self.reader_poller = ReaderPoller(self.reader)
         self.reader_poller.start()
+        self.reader_wanted = False
 
         self.card_ready = True
         self.consecutive_misses = 0
@@ -206,6 +217,30 @@ class AccessControlKivyApp(App):
                 except Exception:
                     traceback.print_exc()
 
+    def update_reader_state(self):
+        mode = self.controller.mode
+        want = mode == "normal"
+
+        # Phase 2: also listen while the enroll screen waits for a new card.
+        if (RFID_ON_ENROLL and mode == "admin_menu"
+                and self.sm.current == "enroll"):
+            want = True
+
+        if want == self.reader_wanted:
+            return
+
+        self.reader_wanted = want
+        self.reader_poller.drain()
+
+        if want:
+            # Ignore a card that is still resting on the reader.
+            self.consecutive_misses = 0
+            self.card_ready = False
+            self.last_card_uid = None
+
+        self.reader_poller.set_active(want)
+        print(f"{time.strftime('%H:%M:%S')} RFID reader {'ON' if want else 'OFF'}")
+   
     def show_home_status(self, text, seconds=4):
         self.home_status_label.text = text
 
@@ -227,8 +262,11 @@ class AccessControlKivyApp(App):
             self.update_home_state()
             self.process_exit_request()
 
+            self.update_reader_state()
+
             for uid in self.reader_poller.drain():
-                self.process_reader_sample(uid)
+                if self.reader_wanted:
+                    self.process_reader_sample(uid)
         except Exception:
             print("ERROR IN SYSTEM TICK:")
             traceback.print_exc()
