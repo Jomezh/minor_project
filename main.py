@@ -168,7 +168,10 @@ class AccessControlKivyApp(App):
 
         self.sm = build_ui(self)
 
+        self._last_touch = time.monotonic()
+
         def log_touch(kind, touch):
+            self._last_touch = time.monotonic()
             if kind == "MOVE":
                 now = time.monotonic()
                 if now - getattr(self, "_last_move_log", 0) < 0.3:
@@ -190,7 +193,6 @@ class AccessControlKivyApp(App):
         print("WINDOW SIZE:", Window.size)
         
         Clock.schedule_interval(self.system_tick, 0.05)
-        Clock.schedule_interval(self.release_stale_touches, 0.25)
         return self.sm
 
     # ---------------- Hardware / polling ----------------
@@ -198,24 +200,7 @@ class AccessControlKivyApp(App):
     def on_physical_exit_button(self):
         self.exit_requested.set()
 
-    def release_stale_touches(self, dt):
-        now = time.time()
-
-        for touch in list(EventLoop.touches):
-            # Measure from when the touch began, not from its last update:
-            # a noisy panel can keep a dead touch alive with tiny moves.
-            if now - touch.time_start > 2.0:
-                print(
-                    f"{time.strftime('%H:%M:%S')} STALE TOUCH released "
-                    f"id={touch.uid} x={touch.x:.0f} y={touch.y:.0f} "
-                    f"age={now - touch.time_start:.1f}s "
-                    f"screen={self.sm.current}"
-                )
-                try:
-                    touch.time_end = now
-                    EventLoop.post_dispatch_input("end", touch)
-                except Exception:
-                    traceback.print_exc()
+    
 
     def update_reader_state(self):
         mode = self.controller.mode
@@ -256,6 +241,11 @@ class AccessControlKivyApp(App):
         self.home_status_label.text = "Waiting for RFID card..."
 
     def system_tick(self, dt):
+        if (self.controller.mode != "normal"
+                and time.monotonic() - self._last_touch > 60):
+            print("Admin idle timeout, exiting admin mode")
+            self._last_touch = time.monotonic()
+            self.exit_admin()
         try:
             self.button.poll()
             self.controller.update()
